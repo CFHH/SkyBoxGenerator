@@ -1,0 +1,1 @@
+protoc -I="." --grpc_out="." --cpp_out="." --plugin=protoc-gen-grpc="D:/grpc_sdk/win64/bin/grpc_cpp_plugin.exe" "./skybox.proto"

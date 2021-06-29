@@ -1,0 +1,14 @@
+{
+	"Targets": [
+		{
+			"Name": "SkyBoxGenerator",
+			"Path": "G:\\UE4Workspace\\SkyBoxGenerator\\Source\\SkyBoxGenerator.Target.cs",
+			"Type": "Game"
+		},
+		{
+			"Name": "SkyBoxGeneratorEditor",
+			"Path": "G:\\UE4Workspace\\SkyBoxGenerator\\Source\\SkyBoxGeneratorEditor.Target.cs",
+			"Type": "Editor"
+		}
+	]
+}

@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "io.grpc.pb.skybox";
+option java_outer_classname = "SkyBoxProto";
+option objc_class_prefix = "PB";
+
+package skybox;
+
+service SkyBoxService {
+  rpc SayHello (HelloRequest) returns (HelloReply) {}
+  rpc GenerateSkyBox (GenerateSkyBoxRequest) returns (GenerateSkyBoxReply) {}
+  rpc QueryJob (QueryJobRequest) returns (QueryJobReply) {}
+}
+
+message HelloRequest {
+  string name = 1;
+}
+
+message HelloReply {
+  string message = 1;
+}
+
+message Point {
+  float x = 1;
+  float y = 2;
+  float z = 3;
+}
+
+enum JobStatus {
+  Succeeded = 0;
+  Failed = 1;
+  Waiting = 2;
+  Working = 3;
+}
+
+message GenerateSkyBoxRequest {
+  Point position = 1;
+}
+
+message GenerateSkyBoxReply {
+  int32 job_id = 1;
+}
+
+message QueryJobRequest {
+  int32 job_id = 1;
+}
+
+message QueryJobReply {
+  int32 job_id = 1;
+  JobStatus job_status = 2;
+}
