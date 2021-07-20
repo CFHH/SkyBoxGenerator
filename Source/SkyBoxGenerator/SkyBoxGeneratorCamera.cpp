@@ -22,8 +22,8 @@ ASkyBoxGeneratorCamera::ASkyBoxGeneratorCamera()
     SkyBoxCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("SkyBoxCamera"));
     SkyBoxCamera->SetupAttachment(GetCapsuleComponent());
     SkyBoxCamera->SetRelativeLocation(FVector(0.0f, 0.0f, 0.0f));
-    SkyBoxCamera->bUsePawnControlRotation = false;  //如果这个是true，就不能旋转Actor
-    SkyBoxCamera->SetFieldOfView(90.0f);
+    SkyBoxCamera->bUsePawnControlRotation = false;  //如果这个是true，就不能旋转Actor；若不能YAW旋转，蓝图打开actor，取消“用控制器旋转Yaw”的打勾
+    //SkyBoxCamera->SetFieldOfView(90.0f);  //在编辑器里指定
     SkyBoxCamera->SetAspectRatio(1.0f);
     SkyBoxCamera->SetConstraintAspectRatio(true);
     //APlayerController* OurPlayerController = UGameplayStatics::GetPlayerController(this, 0);
@@ -83,6 +83,7 @@ void ASkyBoxGeneratorCamera::Tick(float DeltaTime)
         m_current_job = SkyBoxServiceImpl::Instance()->GetJob();
         if (m_current_job == NULL)
             return;
+        UGameplayStatics::SetGlobalTimeDilation(GetWorld(), 0.0f);
         UE_LOG(LogTemp, Warning, TEXT("！！！！！！！！！！Get New Job, job_id = %d, scene_id = %d, position = (%.1f, %.1f, %.1f)"),
             m_current_job->JobID(), m_current_job->m_position.scene_id, m_current_job->m_position.x, m_current_job->m_position.y, m_current_job->m_position.z);
         SetActorLocation(FVector(m_current_job->m_position.x, m_current_job->m_position.y, m_current_job->m_position.z));

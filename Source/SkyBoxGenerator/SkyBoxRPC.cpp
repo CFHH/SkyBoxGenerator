@@ -61,12 +61,12 @@ void SkyBoxServiceImpl::AddTestJob()
     //key1.z = 235.0f;
     //CreateNewJob(&key1);
 
-    //SkyBoxPosition key2;
-    //key2.scene_id = 0;
-    //key2.x = 329.0f;
-    //key2.y = -359.0f;
-    //key2.z = 235.0f;
-    //CreateNewJob(&key2);
+    SkyBoxPosition key2;
+    key2.scene_id = 0;
+    key2.x = 329.0f;
+    key2.y = -359.0f;
+    key2.z = 1000.0f;
+    CreateNewJob(&key2);
 
     SkyBoxPosition key3;
     key3.scene_id = 0;

@@ -56,7 +56,7 @@ bool SkyBoxWorker::Init()
 uint32 SkyBoxWorker::Run()
 {
     UE_LOG(LogTemp, Warning, TEXT("！！！！！！！！！！SkyBoxWorker::Run()"));
-    FPlatformProcess::Sleep(3.0f);
+    FPlatformProcess::Sleep(5.0f);
     SkyBoxServiceImpl::RunServer();
     return 0;
 }
