@@ -36,6 +36,7 @@ private:
     void SetViewTarget();
     void SetCaptureCameraLocation(FVector location);
     void SetCaptureCameraRotation(FRotator rotation);
+    void OnScreenshotProcessed_RenderThread();
     void OnBackBufferReady_RenderThread(SWindow& SlateWindow, const FTexture2DRHIRef& BackBuffer);
     void CaptureBackBufferToPNG(const FTexture2DRHIRef& BackBuffer);
     bool SavePNGToFile();

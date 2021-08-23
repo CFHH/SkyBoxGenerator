@@ -56,6 +56,7 @@ ASkyBoxGeneratorCamera::~ASkyBoxGeneratorCamera()
     m_CaptureCameraActor = NULL;
     SkyBoxWorker::Shutdown();
     //FSlateApplication::Get().GetRenderer()->OnBackBufferReadyToPresent().RemoveAll(this);
+    //FScreenshotRequest::OnScreenshotRequestProcessed().RemoveAll(this);
 }
 
 void ASkyBoxGeneratorCamera::BeginPlay()
@@ -69,7 +70,10 @@ void ASkyBoxGeneratorCamera::BeginPlay()
         CreateCaptureCameraActor();
     SetViewTarget();
 
-    FSlateApplication::Get().GetRenderer()->OnBackBufferReadyToPresent().AddUObject(this, &ASkyBoxGeneratorCamera::OnBackBufferReady_RenderThread);
+    if (m_UseHighResShot)
+        FScreenshotRequest::OnScreenshotRequestProcessed().AddUObject(this, &ASkyBoxGeneratorCamera::OnScreenshotProcessed_RenderThread);
+    else
+        FSlateApplication::Get().GetRenderer()->OnBackBufferReadyToPresent().AddUObject(this, &ASkyBoxGeneratorCamera::OnBackBufferReady_RenderThread);
     SkyBoxWorker::StartUp();
 }
 
@@ -109,13 +113,19 @@ void ASkyBoxGeneratorCamera::Tick(float DeltaTime)
     }
     if (m_CurrentState == CaptureState::Waiting1)
     {
-        m_CurrentState = CaptureState::Prepared; //给OnBackBufferReadyToPresent的提示
-
-        ////用命令截图
-        //FString cmd = TEXT("HighResShot 2048x2048");
-        //GEngine->Exec(GetWorld(), *cmd);
-        //m_CurrentState = CaptureState::Saved;
-
+        if (m_UseHighResShot)
+        {
+            //HighResShot实现有bug，字符串中必须用"/"，不能用"\\"
+            m_BackBufferFilePath = FString::Printf(TEXT("I:/UE4Workspace/png/SkyBox(%dX%d)_Scene%d_(%.1f，%.1f，%.1f)_%d.png"),
+                m_BackBufferSizeX, m_BackBufferSizeY, m_current_job->m_position.scene_id, m_current_job->m_position.x, m_current_job->m_position.y, m_current_job->m_position.z, m_CurrentDirection);
+            FString cmd = FString::Printf(TEXT("HighResShot 2048x2048 filename=\"%s\""), *m_BackBufferFilePath);
+            UE_LOG(LogTemp, Warning, TEXT("！！！！！！！！！！%s"), *cmd);
+            GEngine->Exec(GetWorld(), *cmd);
+        }
+        else
+        {
+            m_CurrentState = CaptureState::Prepared; //给OnBackBufferReadyToPresent的提示
+        }
         return;
     }
     if (m_CurrentState == CaptureState::Captured)
@@ -219,6 +229,12 @@ void ASkyBoxGeneratorCamera::SetCaptureCameraRotation(FRotator rotation)
         SetActorRotation(rotation);
         //m_CaptureCameraComponent->SetRelativeRotation(rotation);
     }
+}
+
+void ASkyBoxGeneratorCamera::OnScreenshotProcessed_RenderThread()
+{
+    FScopeLock lock(&m_lock);
+    m_CurrentState = CaptureState::Saved;
 }
 
 void ASkyBoxGeneratorCamera::OnBackBufferReady_RenderThread(SWindow& SlateWindow, const FTexture2DRHIRef& BackBuffer)
