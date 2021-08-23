@@ -7,8 +7,13 @@
 //#include <SlateApplication.h>
 #include <ImageUtils.h>
 //#include <FileHelper.h>
+#include "Camera/CameraActor.h"
+#include "Engine/Engine.h"
+#include "Engine/World.h"
 #include "SkyBoxRPC.h"
 #include "SkyBoxWorker.h"
+
+#define CAPTURE_FOV 120.0f
 
 
 ASkyBoxGeneratorCamera::ASkyBoxGeneratorCamera()
@@ -19,18 +24,17 @@ ASkyBoxGeneratorCamera::ASkyBoxGeneratorCamera()
 	PrimaryActorTick.bCanEverTick = true;
 
     //创建相机（如果在BluePrint里添加这个组件，无法用代码获取；只能用代码添加，设置相关属性）
-    SkyBoxCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("SkyBoxCamera"));
-    SkyBoxCamera->SetupAttachment(GetCapsuleComponent());
-    SkyBoxCamera->SetRelativeLocation(FVector(0.0f, 0.0f, 0.0f));
-    SkyBoxCamera->bUsePawnControlRotation = false;  //如果这个是true，就不能旋转Actor；若不能YAW旋转，蓝图打开actor，取消“用控制器旋转Yaw”的打勾
-    //SkyBoxCamera->SetFieldOfView(90.0f);  //在编辑器里指定
-    SkyBoxCamera->SetAspectRatio(1.0f);
-    SkyBoxCamera->SetConstraintAspectRatio(true);
-    //APlayerController* OurPlayerController = UGameplayStatics::GetPlayerController(this, 0);
-    //OurPlayerController->SetViewTarget(this);
+    m_CaptureCameraComponent = CreateDefaultSubobject<UCameraComponent>(TEXT("SkyBoxCamera"));
+    m_CaptureCameraComponent->SetupAttachment(GetCapsuleComponent());
+    m_CaptureCameraComponent->SetRelativeLocation(FVector(0.0f, 0.0f, 0.0f));
+    m_CaptureCameraComponent->bUsePawnControlRotation = false;  //如果这个是true，就不能旋转Actor；若不能YAW旋转，蓝图打开actor，取消“用控制器旋转Yaw”的打勾
+    m_CaptureCameraComponent->SetFieldOfView(CAPTURE_FOV);  //在编辑器里指定
+    m_CaptureCameraComponent->SetAspectRatio(1.0f);
+    m_CaptureCameraComponent->SetConstraintAspectRatio(true);
 
-    //SetActorRotation(FRotator(0.0f, 90.0f, 0.0f));  //测试
-    //SkyBoxCamera->SetRelativeRotation(FRotator(0.0f, 90.0f, 0.0f));  //测试
+    m_CaptureCameraActor = NULL;
+    m_UseActorToCapture = true;  //true使用m_CaptureCameraActor，false使用m_CaptureCameraComponent
+    m_UseHighResShot = false; //true使用命令HighResShot高清截图，false使用OnBackBufferReadyToPresent
 
     m_SixDirection.Push(FRotator(0.0f, 0.0f, 0.0f));  //前
     m_SixDirection.Push(FRotator(0.0f, 90.0f, 0.0f));  //右
@@ -47,6 +51,9 @@ ASkyBoxGeneratorCamera::ASkyBoxGeneratorCamera()
 ASkyBoxGeneratorCamera::~ASkyBoxGeneratorCamera()
 {
     UE_LOG(LogTemp, Warning, TEXT("！！！！！！！！！！~ASkyBoxGeneratorCamera()"));
+    //if (m_CaptureCamera != NULL)
+    //    m_CaptureCameraActor->Destroy();  //这会导致崩溃，这Actor生命周期应该是由UE4自己管理了
+    m_CaptureCameraActor = NULL;
     SkyBoxWorker::Shutdown();
     //FSlateApplication::Get().GetRenderer()->OnBackBufferReadyToPresent().RemoveAll(this);
 }
@@ -54,9 +61,14 @@ ASkyBoxGeneratorCamera::~ASkyBoxGeneratorCamera()
 void ASkyBoxGeneratorCamera::BeginPlay()
 {
     Super::BeginPlay();
-    SetActorLocation(FVector(100.0f, 0.0f, 110.0f));
-
     UE_LOG(LogTemp, Warning, TEXT("！！！！！！！！！！ASkyBoxGeneratorCamera::BeginPlay()"));
+
+    SetActorLocation(FVector(100.0f, 0.0f, 110.0f));  //设个初始位置
+
+    if (m_UseActorToCapture)
+        CreateCaptureCameraActor();
+    SetViewTarget();
+
     FSlateApplication::Get().GetRenderer()->OnBackBufferReadyToPresent().AddUObject(this, &ASkyBoxGeneratorCamera::OnBackBufferReady_RenderThread);
     SkyBoxWorker::StartUp();
 }
@@ -75,6 +87,8 @@ void ASkyBoxGeneratorCamera::SetupPlayerInputComponent(UInputComponent* PlayerIn
 void ASkyBoxGeneratorCamera::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
+    if (m_UseActorToCapture && m_CaptureCameraActor == NULL)
+        return;
 
     FScopeLock lock(&m_lock);
 
@@ -86,17 +100,22 @@ void ASkyBoxGeneratorCamera::Tick(float DeltaTime)
         UGameplayStatics::SetGlobalTimeDilation(GetWorld(), 0.0f);
         UE_LOG(LogTemp, Warning, TEXT("！！！！！！！！！！Get New Job, job_id = %d, scene_id = %d, position = (%.1f, %.1f, %.1f)"),
             m_current_job->JobID(), m_current_job->m_position.scene_id, m_current_job->m_position.x, m_current_job->m_position.y, m_current_job->m_position.z);
-        SetActorLocation(FVector(m_current_job->m_position.x, m_current_job->m_position.y, m_current_job->m_position.z));
+        SetCaptureCameraLocation(FVector(m_current_job->m_position.x, m_current_job->m_position.y, m_current_job->m_position.z));
         m_CurrentDirection = 0;
         m_CurrentState = CaptureState::Waiting1;
-        SetActorRotation(m_SixDirection[m_CurrentDirection]);
-        //SkyBoxCamera->SetRelativeRotation(m_SixDirection[m_CurrentDirection]);
+        SetCaptureCameraRotation(m_SixDirection[m_CurrentDirection]);
         UE_LOG(LogTemp, Warning, TEXT("！！！！！！！！！！Change Direction, job_id = %d, m_CurrentDirection = %d"), m_current_job->JobID(), m_CurrentDirection);
         return;
     }
     if (m_CurrentState == CaptureState::Waiting1)
     {
-        m_CurrentState = CaptureState::Prepared;
+        m_CurrentState = CaptureState::Prepared; //给OnBackBufferReadyToPresent的提示
+
+        ////用命令截图
+        //FString cmd = TEXT("HighResShot 2048x2048");
+        //GEngine->Exec(GetWorld(), *cmd);
+        //m_CurrentState = CaptureState::Saved;
+
         return;
     }
     if (m_CurrentState == CaptureState::Captured)
@@ -124,8 +143,7 @@ void ASkyBoxGeneratorCamera::Tick(float DeltaTime)
         if (m_CurrentDirection < m_SixDirection.Num())
         {
             m_CurrentState = CaptureState::Waiting1;
-            SetActorRotation(m_SixDirection[m_CurrentDirection]);
-            //SkyBoxCamera->SetRelativeRotation(m_SixDirection[m_CurrentDirection]);
+            SetCaptureCameraRotation(m_SixDirection[m_CurrentDirection]);
             UE_LOG(LogTemp, Warning, TEXT("！！！！！！！！！！Change Direction, job_id = %d, m_CurrentDirection = %d"), m_current_job->JobID(), m_CurrentDirection);
         }
         else
@@ -139,6 +157,67 @@ void ASkyBoxGeneratorCamera::Tick(float DeltaTime)
             m_CurrentState = CaptureState::Invalid;
         }
         return;
+    }
+}
+
+void ASkyBoxGeneratorCamera::CreateCaptureCameraActor()
+{
+    m_CaptureCameraActor = GetWorld()->SpawnActor<ACameraActor>(GetActorLocation(), GetActorRotation());
+    UCameraComponent* camera_component = m_CaptureCameraActor->GetCameraComponent();
+    camera_component->bUsePawnControlRotation = false;
+    camera_component->SetFieldOfView(CAPTURE_FOV);  //在编辑器里指定
+    camera_component->SetAspectRatio(1.0f);
+    camera_component->SetConstraintAspectRatio(true);
+}
+
+void ASkyBoxGeneratorCamera::SetViewTarget()
+{
+    AActor* target = this;
+    if (m_UseActorToCapture)
+    {
+        target = m_CaptureCameraActor;
+        APlayerController* player_controller = UGameplayStatics::GetPlayerController(this, 0);
+        player_controller->SetViewTarget(target);
+    }
+
+
+    ////PlayerController的各种方法
+    //APlayerController* player_controller1 = UGameplayStatics::GetPlayerController(this, 0);
+    //APlayerController* player_controller2 = UGameplayStatics::GetPlayerController(GetWorld(), 0);
+    //APlayerController* player_controller3 = GetWorld()->GetFirstPlayerController();
+    //APlayerController* player_controller4 = GEngine->GetFirstLocalPlayerController(GetWorld());
+    //APlayerController* player_controller5 = GetWorld()->GetFirstLocalPlayerFromController()->GetPlayerController(GetWorld());
+    //player_controller1->SetViewTarget(target);
+
+    //for (FConstPlayerControllerIterator itr = GetWorld()->GetPlayerControllerIterator(); itr; ++itr)
+    //{
+    //    APlayerController* pc = itr->Get();
+    //    pc->SetViewTarget(target);
+    //}
+}
+
+void ASkyBoxGeneratorCamera::SetCaptureCameraLocation(FVector location)
+{
+    if (m_UseActorToCapture)
+    {
+        m_CaptureCameraActor->SetActorLocation(location);
+    }
+    else
+    {
+        SetActorLocation(location);
+    }
+}
+
+void ASkyBoxGeneratorCamera::SetCaptureCameraRotation(FRotator rotation)
+{
+    if (m_UseActorToCapture)
+    {
+        m_CaptureCameraActor->SetActorRotation(rotation);
+    }
+    else
+    {
+        SetActorRotation(rotation);
+        //m_CaptureCameraComponent->SetRelativeRotation(rotation);
     }
 }
 
@@ -167,9 +246,9 @@ void ASkyBoxGeneratorCamera::CaptureBackBufferToPNG(const FTexture2DRHIRef& Back
     m_BackBufferSizeY = BackBuffer->GetSizeY();
 
     FDateTime Time = FDateTime::Now();
-    /*m_BackBufferFilePath = FString::Printf(TEXT("G:\\UE4Workspace\\png\\BACK(%dX%d)_%d__%04d-%02d-%02d_%02d-%02d-%02d_%d.png"),
+    /*m_BackBufferFilePath = FString::Printf(TEXT("I:\\UE4Workspace\\png\\BACK(%dX%d)_%d__%04d-%02d-%02d_%02d-%02d-%02d_%d.png"),
         m_BackBufferSizeX, m_BackBufferSizeY, m_CurrentDirection, Time.GetYear(), Time.GetMonth(), Time.GetDay(), Time.GetHour(), Time.GetMinute(), Time.GetSecond(), Time.GetMillisecond());*/
-    m_BackBufferFilePath = FString::Printf(TEXT("G:\\UE4Workspace\\png\\SkyBox(%dX%d)_Scene%d_(%.1f，%.1f，%.1f)_%d.png"),
+    m_BackBufferFilePath = FString::Printf(TEXT("I:\\UE4Workspace\\png\\SkyBox(%dX%d)_Scene%d_(%.1f，%.1f，%.1f)_%d.png"),
         m_BackBufferSizeX, m_BackBufferSizeY, m_current_job->m_position.scene_id, m_current_job->m_position.x, m_current_job->m_position.y, m_current_job->m_position.z, m_CurrentDirection);
     m_CurrentState = CaptureState::Captured;
 }

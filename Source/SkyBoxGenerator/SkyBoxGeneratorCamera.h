@@ -6,14 +6,19 @@
 
 class UCameraComponent;
 class SkyBoxJob;
+class ACameraActor;
 
 UCLASS(config = Game)
-class SKYBOXGENERATOR_API ASkyBoxGeneratorCamera : public ACharacter
+class SKYBOXGENERATOR_API /*拷贝后要改这个宏*/ ASkyBoxGeneratorCamera : public ACharacter
 {
     GENERATED_BODY()
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Camera, meta = (AllowPrivateAccess = "true"))
-    UCameraComponent* SkyBoxCamera;
+    UCameraComponent* m_CaptureCameraComponent;
+
+    ACameraActor* m_CaptureCameraActor;
+    bool m_UseActorToCapture;
+    bool m_UseHighResShot;
 
 public:
 	ASkyBoxGeneratorCamera();
@@ -27,6 +32,10 @@ public:
     virtual bool ShouldTickIfViewportsOnly() const override;
     virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 private:
+    void CreateCaptureCameraActor();
+    void SetViewTarget();
+    void SetCaptureCameraLocation(FVector location);
+    void SetCaptureCameraRotation(FRotator rotation);
     void OnBackBufferReady_RenderThread(SWindow& SlateWindow, const FTexture2DRHIRef& BackBuffer);
     void CaptureBackBufferToPNG(const FTexture2DRHIRef& BackBuffer);
     bool SavePNGToFile();
