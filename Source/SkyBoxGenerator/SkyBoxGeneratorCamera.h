@@ -2,14 +2,16 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
+#include "Interface.h"
 #include "SkyBoxGeneratorCamera.generated.h"
 
 class UCameraComponent;
 class SkyBoxJob;
 class ACameraActor;
+class USkyBoxSceneCapturer;
 
 UCLASS(config = Game)
-class SKYBOXGENERATOR_API /*拷贝后要改这个宏*/ ASkyBoxGeneratorCamera : public ACharacter
+class SKYBOXGENERATOR_API /*拷贝后要改这个宏*/ ASkyBoxGeneratorCamera : public ACharacter, public IGameShutDownNotify
 {
     GENERATED_BODY()
 
@@ -19,6 +21,8 @@ class SKYBOXGENERATOR_API /*拷贝后要改这个宏*/ ASkyBoxGeneratorCamera : 
     ACameraActor* m_CaptureCameraActor;
     bool m_UseActorToCapture;
     bool m_UseHighResShot;
+    bool m_UsePanoramicCapture;
+    USkyBoxSceneCapturer* m_SceneCapturerObject;
 
 public:
 	ASkyBoxGeneratorCamera();
@@ -26,6 +30,8 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
+    virtual void EndPlay(const EEndPlayReason::Type EndPlayReason);
+    virtual void ShutDown(); /*IGameShutDownNotify*/
 
 public:
     virtual void Tick(float DeltaTime) override;
@@ -40,10 +46,14 @@ private:
     void OnBackBufferReady_RenderThread(SWindow& SlateWindow, const FTexture2DRHIRef& BackBuffer);
     void CaptureBackBufferToPNG(const FTexture2DRHIRef& BackBuffer);
     bool SavePNGToFile();
+    void OnSkyBoxCaptureDone_RenderThread();
     TArray<FRotator> m_SixDirection;
     enum CaptureState
     {
         Invalid = 0,
+        //使用USceneCapturer
+        Waiting_v2,
+        //其他
         Waiting1,
         Prepared,
         Captured,

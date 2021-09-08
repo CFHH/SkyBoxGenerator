@@ -3,7 +3,7 @@
   <ItemGroup>
     <None Include="..\..\SkyBoxGenerator.uproject" />
     <Filter Include="Source">
-      <UniqueIdentifier>{0697CD78-DFFC-4651-AA30-C988DD62E3C2}</UniqueIdentifier>
+      <UniqueIdentifier>{DB75CACA-3B8D-4401-929B-D5F8C2E3BBB8}</UniqueIdentifier>
     </Filter>
     <None Include="..\..\Source\SkyBoxGenerator.Target.cs">
       <Filter>Source</Filter>
@@ -11,8 +11,11 @@
     <None Include="..\..\Source\SkyBoxGeneratorEditor.Target.cs">
       <Filter>Source</Filter>
     </None>
+    <None Include="..\..\.gitattributes" />
+    <None Include="..\..\.gitignore" />
+    <None Include="..\..\grpc_build_ue426.bat" />
     <Filter Include="Config">
-      <UniqueIdentifier>{BF1660A2-3C7D-4F69-B820-CAB5E6266611}</UniqueIdentifier>
+      <UniqueIdentifier>{EE3B9BD0-7D48-4EE1-8999-819FD076F4A7}</UniqueIdentifier>
     </Filter>
     <None Include="..\..\Config\DefaultEditor.ini">
       <Filter>Config</Filter>
@@ -30,8 +33,14 @@
       <Filter>Config</Filter>
     </None>
     <Filter Include="Source\SkyBoxGenerator">
-      <UniqueIdentifier>{0D04475D-B752-410E-A26A-1ADE3E259DBB}</UniqueIdentifier>
+      <UniqueIdentifier>{77170714-EFC6-46AF-A035-75BC8863E5F5}</UniqueIdentifier>
     </Filter>
+    <ClCompile Include="..\..\Source\SkyBoxGenerator\SkyBoxGameInstance.cpp">
+      <Filter>Source\SkyBoxGenerator</Filter>
+    </ClCompile>
+    <ClInclude Include="..\..\Source\SkyBoxGenerator\SkyBoxGameInstance.h">
+      <Filter>Source\SkyBoxGenerator</Filter>
+    </ClInclude>
     <None Include="..\..\Source\SkyBoxGenerator\SkyBoxGenerator.Build.cs">
       <Filter>Source\SkyBoxGenerator</Filter>
     </None>
@@ -71,59 +80,57 @@
     <ClInclude Include="..\..\Source\SkyBoxGenerator\SkyBoxGeneratorProjectile.h">
       <Filter>Source\SkyBoxGenerator</Filter>
     </ClInclude>
-    <None Include="..\..\Source\SkyBoxGenerator\protos\genproto.bat">
-      <Filter>Source\SkyBoxGenerator\protos</Filter>
-    </None>
-    <None Include="..\..\Source\SkyBoxGenerator\protos\skybox.proto">
-      <Filter>Source\SkyBoxGenerator\protos</Filter>
-    </None>
-    <None Include="..\..\www\index.js">
-      <Filter>www</Filter>
-    </None>
-    <None Include="..\..\www\requestHandlers.js">
-      <Filter>www</Filter>
-    </None>
-    <None Include="..\..\www\router.js">
-      <Filter>www</Filter>
-    </None>
-    <None Include="..\..\www\server.js">
-      <Filter>www</Filter>
-    </None>
-  </ItemGroup>
-  <ItemGroup>
-    <Filter Include="Source\SkyBoxGenerator\protos">
-      <UniqueIdentifier>{f9148c2d-3a12-4d7c-9711-f79839585f88}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="www">
-      <UniqueIdentifier>{3ac5a8f4-ec91-4118-96fc-7c8d09571f98}</UniqueIdentifier>
-    </Filter>
-  </ItemGroup>
-  <ItemGroup>
-    <ClCompile Include="..\..\Source\SkyBoxGenerator\protos\skybox.grpc.pb.cc">
-      <Filter>Source\SkyBoxGenerator\protos</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\Source\SkyBoxGenerator\protos\skybox.pb.cc">
-      <Filter>Source\SkyBoxGenerator\protos</Filter>
-    </ClCompile>
     <ClCompile Include="..\..\Source\SkyBoxGenerator\SkyBoxRPC.cpp">
       <Filter>Source\SkyBoxGenerator</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\Source\SkyBoxGenerator\SkyBoxWorker.cpp">
-      <Filter>Source\SkyBoxGenerator</Filter>
-    </ClCompile>
-  </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="..\..\Source\SkyBoxGenerator\protos\skybox.grpc.pb.h">
-      <Filter>Source\SkyBoxGenerator\protos</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\Source\SkyBoxGenerator\protos\skybox.pb.h">
-      <Filter>Source\SkyBoxGenerator\protos</Filter>
-    </ClInclude>
     <ClInclude Include="..\..\Source\SkyBoxGenerator\SkyBoxRPC.h">
       <Filter>Source\SkyBoxGenerator</Filter>
     </ClInclude>
+    <ClCompile Include="..\..\Source\SkyBoxGenerator\SkyBoxSceneCapturer.cpp">
+      <Filter>Source\SkyBoxGenerator</Filter>
+    </ClCompile>
+    <ClInclude Include="..\..\Source\SkyBoxGenerator\SkyBoxSceneCapturer.h">
+      <Filter>Source\SkyBoxGenerator</Filter>
+    </ClInclude>
+    <ClCompile Include="..\..\Source\SkyBoxGenerator\SkyBoxWorker.cpp">
+      <Filter>Source\SkyBoxGenerator</Filter>
+    </ClCompile>
     <ClInclude Include="..\..\Source\SkyBoxGenerator\SkyBoxWorker.h">
       <Filter>Source\SkyBoxGenerator</Filter>
     </ClInclude>
+    <Filter Include="Source\SkyBoxGenerator\protos">
+      <UniqueIdentifier>{16393F9E-4735-423F-804D-E3B54630F882}</UniqueIdentifier>
+    </Filter>
+    <None Include="..\..\Source\SkyBoxGenerator\protos\genproto.bat">
+      <Filter>Source\SkyBoxGenerator\protos</Filter>
+    </None>
+    <None Include="..\..\Source\SkyBoxGenerator\protos\skybox.grpc.pb.cc">
+      <Filter>Source\SkyBoxGenerator\protos</Filter>
+    </None>
+    <ClInclude Include="..\..\Source\SkyBoxGenerator\protos\skybox.grpc.pb.h">
+      <Filter>Source\SkyBoxGenerator\protos</Filter>
+    </ClInclude>
+    <None Include="..\..\Source\SkyBoxGenerator\protos\skybox.pb.cc">
+      <Filter>Source\SkyBoxGenerator\protos</Filter>
+    </None>
+    <ClInclude Include="..\..\Source\SkyBoxGenerator\protos\skybox.pb.h">
+      <Filter>Source\SkyBoxGenerator\protos</Filter>
+    </ClInclude>
+    <None Include="..\..\Source\SkyBoxGenerator\protos\skybox.proto">
+      <Filter>Source\SkyBoxGenerator\protos</Filter>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\..\Source\SkyBoxGenerator\Interface.h">
+      <Filter>Source\SkyBoxGenerator</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Source\SkyBoxGenerator\SceneCapturer.h">
+      <Filter>Source\SkyBoxGenerator</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\..\Source\SkyBoxGenerator\SceneCapturer.cpp">
+      <Filter>Source\SkyBoxGenerator</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>
