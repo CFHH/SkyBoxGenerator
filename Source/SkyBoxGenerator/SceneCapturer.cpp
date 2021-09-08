@@ -1,9 +1,6 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "SceneCapturer.h"
-#include "StereoPanoramaManager.h"
-#include "StereoPanorama.h"
-#include "StereoCapturePawn.h"
 #include "Engine/TextureRenderTarget2D.h"
 #include "Engine/World.h"
 #include "IImageWrapper.h"
@@ -32,6 +29,9 @@
 #include "Tickable.h"
 
 #define LOCTEXT_NAMESPACE "LogStereoPanorama"
+
+#define CONCURRENT_CAPTURES 8
+#define GENERATE_DEBUG_IMAGES 0
 
 // always combine both eyes
 const bool CombineAtlasesOnOutput = true;
@@ -112,61 +112,61 @@ USceneCapturer::USceneCapturer(FVTableHelper& Helper)
     , bIsTicking(false)
     , CapturePlayerController(NULL)
     , CaptureGameMode(NULL)
-    , hAngIncrement(FStereoPanoramaManager::HorizontalAngularIncrement->GetFloat())
-    , vAngIncrement(FStereoPanoramaManager::VerticalAngularIncrement->GetFloat())
-    , eyeSeparation(FStereoPanoramaManager::EyeSeparation->GetFloat())
+    , hAngIncrement(2.0f)
+    , vAngIncrement(15.0f)
+    , eyeSeparation(0.0f)
     , NumberOfHorizontalSteps((int32)(360.0f / hAngIncrement))
     , NumberOfVerticalSteps((int32)(180.0f / vAngIncrement) + 1) /* Need an extra b/c we only grab half of the top & bottom slices */
-    , SphericalAtlasWidth(FStereoPanoramaManager::StepCaptureWidth->GetInt())
+    , SphericalAtlasWidth(6144)
     , SphericalAtlasHeight(SphericalAtlasWidth / 2)
-    , bForceAlpha(FStereoPanoramaManager::ForceAlpha->GetInt() != 0)
-    , bEnableBilerp(FStereoPanoramaManager::EnableBilerp->GetInt() != 0)
-    , SSMethod(FMath::Clamp<int32>(FStereoPanoramaManager::SuperSamplingMethod->GetInt(), 0, UE_ARRAY_COUNT(g_ssPatterns)))
-    , bOverrideInitialYaw(FStereoPanoramaManager::ShouldOverrideInitialYaw->GetInt() != 0)
-    , ForcedInitialYaw(FRotator::ClampAxis(FStereoPanoramaManager::ForcedInitialYaw->GetFloat()))
-    , OutputDir(FStereoPanoramaManager::OutputDir->GetString().IsEmpty() ? FPaths::ProjectSavedDir() / TEXT("StereoPanorama") : FStereoPanoramaManager::OutputDir->GetString())
-	, UseCameraRotation(FStereoPanoramaManager::UseCameraRotation->GetInt())
-    , dbgDisableOffsetRotation(FStereoPanoramaManager::FadeStereoToZeroAtSides->GetInt() != 0)
-	, OutputBitDepth(FStereoPanoramaManager::OutputBitDepth->GetInt())
-	, bOutputSceneDepth(FStereoPanoramaManager::OutputSceneDepth->GetInt() != 0)
-	, bOutputFinalColor(FStereoPanoramaManager::OutputFinalColor->GetInt() != 0)
-	, bOutputWorldNormal(FStereoPanoramaManager::OutputWorldNormal->GetInt() != 0)
-	, bOutputRoughness(FStereoPanoramaManager::OutputRoughness->GetInt() != 0)
-	, bOutputMetallic(FStereoPanoramaManager::OutputMetalic->GetInt() != 0)
-	, bOutputBaseColor(FStereoPanoramaManager::OutputBaseColor->GetInt() != 0)
-	, bOutputAmbientOcclusion(FStereoPanoramaManager::OutputAmbientOcclusion->GetInt() != 0)
-	, bMonoscopicMode(FStereoPanoramaManager::MonoscopicMode->GetInt() != 0)
+    , bForceAlpha(false)
+    , bEnableBilerp(true)
+    , SSMethod(FMath::Clamp<int32>(1, 0, UE_ARRAY_COUNT(g_ssPatterns)))
+    , bOverrideInitialYaw(false)
+    , ForcedInitialYaw(FRotator::ClampAxis(90.0f))
+    , OutputDir(TEXT("I:/UE4Workspace/png/capture"))
+	, UseCameraRotation(0)
+    , dbgDisableOffsetRotation(false)
+	, OutputBitDepth(8)
+	, bOutputSceneDepth(false)
+	, bOutputFinalColor(true)
+	, bOutputWorldNormal(false)
+	, bOutputRoughness(false)
+	, bOutputMetallic(false)
+	, bOutputBaseColor(false)
+	, bOutputAmbientOcclusion(false)
+	, bMonoscopicMode(true)
 {}
 
 USceneCapturer::USceneCapturer()
-	: ImageWrapperModule(FModuleManager::LoadModuleChecked<IImageWrapperModule>(FName("ImageWrapper")))
-	, bIsTicking(false)
-	, CapturePlayerController(NULL)
-	, CaptureGameMode(NULL)
-	, hAngIncrement(FStereoPanoramaManager::HorizontalAngularIncrement->GetFloat())
-	, vAngIncrement(FStereoPanoramaManager::VerticalAngularIncrement->GetFloat())
-	, eyeSeparation(FStereoPanoramaManager::EyeSeparation->GetFloat())
-	, NumberOfHorizontalSteps((int32)(360.0f / hAngIncrement))
-	, NumberOfVerticalSteps((int32)(180.0f / vAngIncrement) + 1) /* Need an extra b/c we only grab half of the top & bottom slices */
-	, SphericalAtlasWidth(FStereoPanoramaManager::StepCaptureWidth->GetInt())
-	, SphericalAtlasHeight(SphericalAtlasWidth / 2)
-	, bForceAlpha(FStereoPanoramaManager::ForceAlpha->GetInt() != 0)
-	, bEnableBilerp(FStereoPanoramaManager::EnableBilerp->GetInt() != 0)
-	, SSMethod(FMath::Clamp<int32>(FStereoPanoramaManager::SuperSamplingMethod->GetInt(), 0, UE_ARRAY_COUNT(g_ssPatterns)))
-	, bOverrideInitialYaw(FStereoPanoramaManager::ShouldOverrideInitialYaw->GetInt() != 0)
-	, ForcedInitialYaw(FRotator::ClampAxis(FStereoPanoramaManager::ForcedInitialYaw->GetFloat()))
-	, OutputDir(FStereoPanoramaManager::OutputDir->GetString().IsEmpty() ? FPaths::ProjectSavedDir() / TEXT("StereoPanorama") : FStereoPanoramaManager::OutputDir->GetString())
-	, UseCameraRotation(FStereoPanoramaManager::UseCameraRotation->GetInt())
-	, dbgDisableOffsetRotation(FStereoPanoramaManager::FadeStereoToZeroAtSides->GetInt() != 0)
-	, OutputBitDepth(FStereoPanoramaManager::OutputBitDepth->GetInt())
-	, bOutputSceneDepth(FStereoPanoramaManager::OutputSceneDepth->GetInt() != 0)
-	, bOutputFinalColor(FStereoPanoramaManager::OutputFinalColor->GetInt() != 0)
-	, bOutputWorldNormal(FStereoPanoramaManager::OutputWorldNormal->GetInt() != 0)
-	, bOutputRoughness(FStereoPanoramaManager::OutputRoughness->GetInt() != 0)
-	, bOutputMetallic(FStereoPanoramaManager::OutputMetalic->GetInt() != 0)
-	, bOutputBaseColor(FStereoPanoramaManager::OutputBaseColor->GetInt() != 0)
-	, bOutputAmbientOcclusion(FStereoPanoramaManager::OutputAmbientOcclusion->GetInt() != 0)
-	, bMonoscopicMode(FStereoPanoramaManager::MonoscopicMode->GetInt() != 0)
+    : ImageWrapperModule(FModuleManager::LoadModuleChecked<IImageWrapperModule>(FName("ImageWrapper")))
+    , bIsTicking(false)
+    , CapturePlayerController(NULL)
+    , CaptureGameMode(NULL)
+    , hAngIncrement(2.0f)
+    , vAngIncrement(15.0f)
+    , eyeSeparation(0.0f)
+    , NumberOfHorizontalSteps((int32)(360.0f / hAngIncrement))
+    , NumberOfVerticalSteps((int32)(180.0f / vAngIncrement) + 1) /* Need an extra b/c we only grab half of the top & bottom slices */
+    , SphericalAtlasWidth(6144)
+    , SphericalAtlasHeight(SphericalAtlasWidth / 2)
+    , bForceAlpha(false)
+    , bEnableBilerp(true)
+    , SSMethod(FMath::Clamp<int32>(1, 0, UE_ARRAY_COUNT(g_ssPatterns)))
+    , bOverrideInitialYaw(false)
+    , ForcedInitialYaw(FRotator::ClampAxis(90.0f))
+    , OutputDir(TEXT("I:/UE4Workspace/png/capture"))
+    , UseCameraRotation(0)
+    , dbgDisableOffsetRotation(false)
+    , OutputBitDepth(8)
+    , bOutputSceneDepth(false)
+    , bOutputFinalColor(true)
+    , bOutputWorldNormal(false)
+    , bOutputRoughness(false)
+    , bOutputMetallic(false)
+    , bOutputBaseColor(false)
+    , bOutputAmbientOcclusion(false)
+    , bMonoscopicMode(true)
 {
 	//NOTE: ikrimae: Keeping the old sampling mechanism just until we're sure the new way is always better
 	dbgMatchCaptureSliceFovToAtlasSliceFov = false;
@@ -228,7 +228,7 @@ USceneCapturer::USceneCapturer()
         //               And it does. Current noted issues: screen space effects like SSAO, AA, SSR are all off
         //                                                  local eyeadaptation also causes problems. Should probably turn off all PostProcess effects
         //                                                  small fovs cause floating point errors in the sampling function (probably a bug b/c no thought put towards that)
-        captureHFov = FStereoPanoramaManager::CaptureHorizontalFOV->GetFloat();
+        captureHFov = 30.0f;
 
         ensure(captureHFov >= hAngIncrement);
 
@@ -264,7 +264,7 @@ USceneCapturer::USceneCapturer()
         //                     Strip Width/Strip Height is determined based on hAngIncrement & vAngIncrement
         //                     Just make sure pixels/captureHFov >= pixels/hAngIncr && pixels/vAngIncr
 
-        captureVFov = captureHFov = FStereoPanoramaManager::CaptureHorizontalFOV->GetFloat(); //配置是30
+        captureVFov = captureHFov = 30.0f; //配置是30
         sliceVFov   = sliceHFov   = captureHFov;
 
         ensure(captureHFov >= FMath::Max(hAngIncrement, vAngIncrement)); //配置hAngIncrement是2度，vAngIncrement是15度
@@ -278,7 +278,7 @@ USceneCapturer::USceneCapturer()
             2.0f * FMath::Tan(FMath::DegreesToRadians(captureHFov) / 2.0f),
             2.0f * FMath::Tan(FMath::DegreesToRadians(captureVFov) / 2.0f));
 
-        CaptureHeight = CaptureWidth = FStereoPanoramaManager::CaptureSlicePixelWidth->GetInt(); //配置是720
+        CaptureHeight = CaptureWidth = 720; //配置是720
 
         StripWidth  = CaptureWidth  * slicePlaneDim.X / capturePlaneDim.X; //有效部分占整个画面的占比
         StripHeight = CaptureHeight * slicePlaneDim.Y / capturePlaneDim.Y;
@@ -309,7 +309,7 @@ USceneCapturer::USceneCapturer()
 	CaptureSceneComponent->AddToRoot();
 
     //ConcurrentCaptures的配置是8；如果是skybox，配置6，一帧内获得
-	for( int CaptureIndex = 0; CaptureIndex < FStereoPanoramaManager::ConcurrentCaptures->GetInt(); CaptureIndex++ )
+	for( int CaptureIndex = 0; CaptureIndex < CONCURRENT_CAPTURES; CaptureIndex++ )
 	{
 		EStereoscopicPass StereoPass = EStereoscopicPass::eSSP_LEFT_EYE;
 		if (bMonoscopicMode)  //true
@@ -435,7 +435,7 @@ void USceneCapturer::Reset()
 	// apply old states on PP volumes
 	EnablePostProcessVolumes();
 
-	for( int CaptureIndex = 0; CaptureIndex < FStereoPanoramaManager::ConcurrentCaptures->GetInt(); CaptureIndex++ )
+	for( int CaptureIndex = 0; CaptureIndex < CONCURRENT_CAPTURES; CaptureIndex++ )
 	{
 		USceneCaptureComponent2D* LeftEyeCaptureComponent = LeftEyeCaptureComponents[CaptureIndex];
 		USceneCaptureComponent2D* RightEyeCaptureComponent = RightEyeCaptureComponents[CaptureIndex];
@@ -977,7 +977,7 @@ TArray<FLinearColor> USceneCapturer::SaveAtlas(FString Folder, const TArray<FLin
 	}
 
 	// DEBUG ONLY
-	if (FStereoPanoramaManager::GenerateDebugImages->GetInt() != 0)
+	if (GENERATE_DEBUG_IMAGES != 0)
 	{
 		TSharedPtr<IImageWrapper> ImageWrapper = ImageWrapperModule.CreateImageWrapper(EImageFormat::PNG);
 		FString FrameStringUnprojected = FString::Printf(TEXT("%s_%05d_Unprojected.png"), *Folder, CurrentFrameCount);
@@ -1030,7 +1030,7 @@ void USceneCapturer::CaptureComponent(int32 CurrentHorizontalStep, int32 Current
 	CopyToUnprojAtlas(CurrentHorizontalStep, CurrentVerticalStep, Atlas, SurfaceData);
 
 	// DEBUG ONLY
-	if (FStereoPanoramaManager::GenerateDebugImages->GetInt() != 0)
+	if (GENERATE_DEBUG_IMAGES != 0)
 	{
 		SCOPE_CYCLE_COUNTER(STAT_SPSavePNG);
 
@@ -1039,7 +1039,7 @@ void USceneCapturer::CaptureComponent(int32 CurrentHorizontalStep, int32 Current
 		FString CaptureName = OutputDir / Timestamp / Folder / TickString + TEXT(".png");
 
 		// Write out PNG
-		if (FStereoPanoramaManager::GenerateDebugImages->GetInt() == 2)
+		if (GENERATE_DEBUG_IMAGES == 2)
 		{
 			//Read Whole Capture Buffer
 			TSharedPtr<IImageWrapper> ImageWrapper = ImageWrapperModule.CreateImageWrapper(EImageFormat::PNG);
@@ -1161,7 +1161,7 @@ void USceneCapturer::Tick( float DeltaTime )
 			CaptureSceneComponent->SetWorldLocationAndRotation(StartLocation, Rotation);
 
 			// set capture components settings before capturing and reading
-			for (int32 CaptureIndex = 0; CaptureIndex < FStereoPanoramaManager::ConcurrentCaptures->GetInt(); CaptureIndex++)
+			for (int32 CaptureIndex = 0; CaptureIndex < CONCURRENT_CAPTURES; CaptureIndex++)
 			{
 				SetCaptureComponentRequirements(CaptureIndex);
 			}
@@ -1185,7 +1185,7 @@ void USceneCapturer::Tick( float DeltaTime )
         else if (CaptureStep == ECaptureStep::SetPosition)
         {
             FlushRenderingCommands();
-            for (int32 CaptureIndex = 0; CaptureIndex < FStereoPanoramaManager::ConcurrentCaptures->GetInt(); CaptureIndex++)
+            for (int32 CaptureIndex = 0; CaptureIndex < CONCURRENT_CAPTURES; CaptureIndex++)
             {
                 int32 CurrentHorizontalStep;
                 int32 CurrentVerticalStep;
@@ -1201,7 +1201,7 @@ void USceneCapturer::Tick( float DeltaTime )
 		else if (CaptureStep == ECaptureStep::Read)
 		{
             FlushRenderingCommands();
-            for (int32 CaptureIndex = 0; CaptureIndex < FStereoPanoramaManager::ConcurrentCaptures->GetInt(); CaptureIndex++)
+            for (int32 CaptureIndex = 0; CaptureIndex < CONCURRENT_CAPTURES; CaptureIndex++)
             {
                 int32 CurrentHorizontalStep;
                 int32 CurrentVerticalStep;
