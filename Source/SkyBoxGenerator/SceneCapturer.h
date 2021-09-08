@@ -56,6 +56,7 @@ enum class ERenderPass : uint8
 };
 
 DECLARE_DELEGATE_TwoParams(FStereoCaptureDoneDelegate, const TArray<FLinearColor>&, const TArray<FLinearColor>&);
+DECLARE_MULTICAST_DELEGATE(FOnSkyBoxCaptureDone);
 
 
 UCLASS()
@@ -241,4 +242,8 @@ private:
 	const bool bMonoscopicMode;
 
     FStereoCaptureDoneDelegate StereoCaptureDoneDelegate;
+
+public:
+    static FOnSkyBoxCaptureDone& OnSkyBoxCaptureDone() { return m_OnSkyBoxCaptureDoneDelegate; }
+    static FOnSkyBoxCaptureDone m_OnSkyBoxCaptureDoneDelegate;
 };

@@ -25,13 +25,14 @@
 #include "CoreMinimal.h"
 #include "LatentActions.h"
 #include "Engine/LatentActionManager.h"
-#include "MessageLogModule.h"
+#include "MessageLog/Public/MessageLogModule.h"//#include "MessageLogModule.h"
 #include "Tickable.h"
 
 #define LOCTEXT_NAMESPACE "LogStereoPanorama"
 
 #define CONCURRENT_CAPTURES 8
 #define GENERATE_DEBUG_IMAGES 0
+FOnSkyBoxCaptureDone USceneCapturer::m_OnSkyBoxCaptureDoneDelegate;
 
 // always combine both eyes
 const bool CombineAtlasesOnOutput = true;
@@ -124,7 +125,7 @@ USceneCapturer::USceneCapturer(FVTableHelper& Helper)
     , SSMethod(FMath::Clamp<int32>(1, 0, UE_ARRAY_COUNT(g_ssPatterns)))
     , bOverrideInitialYaw(false)
     , ForcedInitialYaw(FRotator::ClampAxis(90.0f))
-    , OutputDir(TEXT("I:/UE4Workspace/png/capture"))
+    , OutputDir(TEXT("I:/UE4Workspace/png/mycapture"))
 	, UseCameraRotation(0)
     , dbgDisableOffsetRotation(false)
 	, OutputBitDepth(8)
@@ -155,7 +156,7 @@ USceneCapturer::USceneCapturer()
     , SSMethod(FMath::Clamp<int32>(1, 0, UE_ARRAY_COUNT(g_ssPatterns)))
     , bOverrideInitialYaw(false)
     , ForcedInitialYaw(FRotator::ClampAxis(90.0f))
-    , OutputDir(TEXT("I:/UE4Workspace/png/capture"))
+    , OutputDir(TEXT("I:/UE4Workspace/png/mycapture"))
     , UseCameraRotation(0)
     , dbgDisableOffsetRotation(false)
     , OutputBitDepth(8)
@@ -188,19 +189,19 @@ USceneCapturer::USceneCapturer()
 	MessageLogModule.RegisterLogListing(StereoPanoramaLogName, LOCTEXT("StereoPanoramaLogLabel", "Panoramic Capture Log"));
 
 	// Get all blendable materials
-	ConstructorHelpers::FObjectFinder<UMaterial> Tmp1(TEXT("/PanoramicCapture/Materials/WorldNormal.WorldNormal"));
+	ConstructorHelpers::FObjectFinder<UMaterial> Tmp1(TEXT("/Game/Materials/WorldNormal.uasset"));  //"/PanoramicCapture/Materials/WorldNormal.WorldNormal"
 	MaterialBlendableWorldNormal = Tmp1.Object;
 
-	ConstructorHelpers::FObjectFinder<UMaterial> Tmp2(TEXT("/PanoramicCapture/Materials/AmbientOcclusion.AmbientOcclusion"));
+	ConstructorHelpers::FObjectFinder<UMaterial> Tmp2(TEXT("/Game/Materials/AmbientOcclusion.uasset"));
 	MaterialBlendableAO = Tmp2.Object;
 
-	ConstructorHelpers::FObjectFinder<UMaterial> Tmp3(TEXT("/PanoramicCapture/Materials/BaseColor.BaseColor"));
+	ConstructorHelpers::FObjectFinder<UMaterial> Tmp3(TEXT("/Game/Materials/BaseColor.uasset"));
 	MaterialBlendableBaseColor = Tmp3.Object;
 
-	ConstructorHelpers::FObjectFinder<UMaterial> Tmp4(TEXT("/PanoramicCapture/Materials/Metallic.Metallic"));
+	ConstructorHelpers::FObjectFinder<UMaterial> Tmp4(TEXT("/Game/Materials/Metallic.uasset"));
 	MaterialBlendableMetallic = Tmp4.Object;
 
-	ConstructorHelpers::FObjectFinder<UMaterial> Tmp5(TEXT("/PanoramicCapture/Materials/Roughness.Roughness"));
+	ConstructorHelpers::FObjectFinder<UMaterial> Tmp5(TEXT("/Game/Materials/Roughness.uasset"));
 	MaterialBlendableRoughness = Tmp5.Object;
 
 	// Cache all PP volumes and current state
@@ -1353,7 +1354,7 @@ void USceneCapturer::Tick( float DeltaTime )
 				FFileHelper::SaveStringToFile(FrameDescriptors, *FrameDescriptorName, FFileHelper::EEncodingOptions::ForceUTF8);
 
 				bIsTicking = false;
-				FStereoPanoramaModule::Get()->Cleanup();
+                m_OnSkyBoxCaptureDoneDelegate.Broadcast(); //FStereoPanoramaModule::Get()->Cleanup();
 			}
 		}
 	}
