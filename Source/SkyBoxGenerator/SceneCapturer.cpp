@@ -188,21 +188,21 @@ USceneCapturer::USceneCapturer()
 	MessageLogOptions.MaxPageCount = 10;
 	MessageLogModule.RegisterLogListing(StereoPanoramaLogName, LOCTEXT("StereoPanoramaLogLabel", "Panoramic Capture Log"));
 
-	// Get all blendable materials
-	ConstructorHelpers::FObjectFinder<UMaterial> Tmp1(TEXT("/Game/Materials/WorldNormal.uasset"));  //"/PanoramicCapture/Materials/WorldNormal.WorldNormal"
-	MaterialBlendableWorldNormal = Tmp1.Object;
+	//// Get all blendable materials
+	//ConstructorHelpers::FObjectFinder<UMaterial> Tmp1(TEXT("/Game/Materials/WorldNormal.uasset"));  //"/PanoramicCapture/Materials/WorldNormal.WorldNormal"
+	//MaterialBlendableWorldNormal = Tmp1.Object;
 
-	ConstructorHelpers::FObjectFinder<UMaterial> Tmp2(TEXT("/Game/Materials/AmbientOcclusion.uasset"));
-	MaterialBlendableAO = Tmp2.Object;
+	//ConstructorHelpers::FObjectFinder<UMaterial> Tmp2(TEXT("/Game/Materials/AmbientOcclusion.uasset"));
+	//MaterialBlendableAO = Tmp2.Object;
 
-	ConstructorHelpers::FObjectFinder<UMaterial> Tmp3(TEXT("/Game/Materials/BaseColor.uasset"));
-	MaterialBlendableBaseColor = Tmp3.Object;
+	//ConstructorHelpers::FObjectFinder<UMaterial> Tmp3(TEXT("/Game/Materials/BaseColor.uasset"));
+	//MaterialBlendableBaseColor = Tmp3.Object;
 
-	ConstructorHelpers::FObjectFinder<UMaterial> Tmp4(TEXT("/Game/Materials/Metallic.uasset"));
-	MaterialBlendableMetallic = Tmp4.Object;
+	//ConstructorHelpers::FObjectFinder<UMaterial> Tmp4(TEXT("/Game/Materials/Metallic.uasset"));
+	//MaterialBlendableMetallic = Tmp4.Object;
 
-	ConstructorHelpers::FObjectFinder<UMaterial> Tmp5(TEXT("/Game/Materials/Roughness.uasset"));
-	MaterialBlendableRoughness = Tmp5.Object;
+	//ConstructorHelpers::FObjectFinder<UMaterial> Tmp5(TEXT("/Game/Materials/Roughness.uasset"));
+	//MaterialBlendableRoughness = Tmp5.Object;
 
 	// Cache all PP volumes and current state
 	CacheAllPostProcessVolumes();
@@ -408,16 +408,16 @@ FString USceneCapturer::GetCurrentRenderPassName()
 
 UMaterial* USceneCapturer::GetCurrentBlendableMaterial()
 {
-	UMaterial* CurrentBlendable;
-	switch (RenderPasses[CurrentRenderPassIndex])
-	{
-		case ERenderPass::WorldNormal: CurrentBlendable = MaterialBlendableWorldNormal; break;
-		case ERenderPass::AO: CurrentBlendable = MaterialBlendableAO; break;
-		case ERenderPass::BaseColor: CurrentBlendable = MaterialBlendableBaseColor; break;
-		case ERenderPass::Metallic: CurrentBlendable = MaterialBlendableMetallic; break;
-		case ERenderPass::Roughness: CurrentBlendable = MaterialBlendableRoughness; break;
-		default: CurrentBlendable = NULL; break;
-	}
+	UMaterial* CurrentBlendable = NULL;
+	//switch (RenderPasses[CurrentRenderPassIndex])
+	//{
+	//	case ERenderPass::WorldNormal: CurrentBlendable = MaterialBlendableWorldNormal; break;
+	//	case ERenderPass::AO: CurrentBlendable = MaterialBlendableAO; break;
+	//	case ERenderPass::BaseColor: CurrentBlendable = MaterialBlendableBaseColor; break;
+	//	case ERenderPass::Metallic: CurrentBlendable = MaterialBlendableMetallic; break;
+	//	case ERenderPass::Roughness: CurrentBlendable = MaterialBlendableRoughness; break;
+	//	default: CurrentBlendable = NULL; break;
+	//}
 	return CurrentBlendable;
 }
 
@@ -462,11 +462,11 @@ void USceneCapturer::Reset()
 // Make sure we remove all blendables
 void USceneCapturer::RemoveAllBlendables(USceneCaptureComponent2D* CaptureComponent)
 {
-	CaptureComponent->PostProcessSettings.RemoveBlendable(MaterialBlendableWorldNormal);
-	CaptureComponent->PostProcessSettings.RemoveBlendable(MaterialBlendableAO);
-	CaptureComponent->PostProcessSettings.RemoveBlendable(MaterialBlendableBaseColor);
-	CaptureComponent->PostProcessSettings.RemoveBlendable(MaterialBlendableMetallic);
-	CaptureComponent->PostProcessSettings.RemoveBlendable(MaterialBlendableRoughness);
+	//CaptureComponent->PostProcessSettings.RemoveBlendable(MaterialBlendableWorldNormal);
+	//CaptureComponent->PostProcessSettings.RemoveBlendable(MaterialBlendableAO);
+	//CaptureComponent->PostProcessSettings.RemoveBlendable(MaterialBlendableBaseColor);
+	//CaptureComponent->PostProcessSettings.RemoveBlendable(MaterialBlendableMetallic);
+	//CaptureComponent->PostProcessSettings.RemoveBlendable(MaterialBlendableRoughness);
 }
 
 // Disable screen space post processes we cannot use while capturing
@@ -655,12 +655,12 @@ void USceneCapturer::ValidateParameters()
 		}
 	}
 
-	// check if we have found all blendables
-	if (MaterialBlendableAO == NULL || MaterialBlendableBaseColor == NULL || MaterialBlendableMetallic == NULL || MaterialBlendableRoughness == NULL || MaterialBlendableWorldNormal == NULL)
-	{
-		ErrorFound = true;
-		FMessageLog(StereoPanoramaLogName).Message(EMessageSeverity::Error, LOCTEXT("ValidationError_MissingBlendableMaterials", "Missing blendable materials. Skipping renders..."));
-	}
+	//// check if we have found all blendables
+	//if (MaterialBlendableAO == NULL || MaterialBlendableBaseColor == NULL || MaterialBlendableMetallic == NULL || MaterialBlendableRoughness == NULL || MaterialBlendableWorldNormal == NULL)
+	//{
+	//	ErrorFound = true;
+	//	FMessageLog(StereoPanoramaLogName).Message(EMessageSeverity::Error, LOCTEXT("ValidationError_MissingBlendableMaterials", "Missing blendable materials. Skipping renders..."));
+	//}
 
 	// Angular increment needs to be a factor of 360 to avoid seams i.e. 360 / angular increment needs to be a whole number
 	if ((int32)(NumberOfHorizontalSteps * hAngIncrement) != 360)

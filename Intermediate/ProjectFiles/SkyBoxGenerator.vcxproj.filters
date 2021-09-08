@@ -86,12 +86,6 @@
     <ClInclude Include="..\..\Source\SkyBoxGenerator\SkyBoxRPC.h">
       <Filter>Source\SkyBoxGenerator</Filter>
     </ClInclude>
-    <ClCompile Include="..\..\Source\SkyBoxGenerator\SkyBoxSceneCapturer.cpp">
-      <Filter>Source\SkyBoxGenerator</Filter>
-    </ClCompile>
-    <ClInclude Include="..\..\Source\SkyBoxGenerator\SkyBoxSceneCapturer.h">
-      <Filter>Source\SkyBoxGenerator</Filter>
-    </ClInclude>
     <ClCompile Include="..\..\Source\SkyBoxGenerator\SkyBoxWorker.cpp">
       <Filter>Source\SkyBoxGenerator</Filter>
     </ClCompile>

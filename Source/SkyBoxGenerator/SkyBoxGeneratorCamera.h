@@ -8,7 +8,7 @@
 class UCameraComponent;
 class SkyBoxJob;
 class ACameraActor;
-class USkyBoxSceneCapturer;
+class USceneCapturer;
 
 UCLASS(config = Game)
 class SKYBOXGENERATOR_API /*拷贝后要改这个宏*/ ASkyBoxGeneratorCamera : public ACharacter, public IGameShutDownNotify
@@ -22,7 +22,7 @@ class SKYBOXGENERATOR_API /*拷贝后要改这个宏*/ ASkyBoxGeneratorCamera : 
     bool m_UseActorToCapture;
     bool m_UseHighResShot;
     bool m_UsePanoramicCapture;
-    USkyBoxSceneCapturer* m_SceneCapturerObject;
+    USceneCapturer* m_SceneCapturerObject;
 
 public:
 	ASkyBoxGeneratorCamera();

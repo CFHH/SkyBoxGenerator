@@ -154,12 +154,12 @@ public:
 	int32 StripWidth;
     int32 StripHeight;
 
-	// blendable materials for each pass
-	UMaterial* MaterialBlendableWorldNormal;
-	UMaterial* MaterialBlendableAO;
-	UMaterial* MaterialBlendableBaseColor;
-	UMaterial* MaterialBlendableMetallic;
-	UMaterial* MaterialBlendableRoughness;
+	//// blendable materials for each pass
+	//UMaterial* MaterialBlendableWorldNormal;
+	//UMaterial* MaterialBlendableAO;
+	//UMaterial* MaterialBlendableBaseColor;
+	//UMaterial* MaterialBlendableMetallic;
+	//UMaterial* MaterialBlendableRoughness;
 
 	// store which passes to do per frame
 	TArray<ERenderPass> RenderPasses;
