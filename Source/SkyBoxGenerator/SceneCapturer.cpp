@@ -118,7 +118,7 @@ USceneCapturer::USceneCapturer(FVTableHelper& Helper)
     , eyeSeparation(0.0f)
     , NumberOfHorizontalSteps((int32)(360.0f / hAngIncrement))
     , NumberOfVerticalSteps((int32)(180.0f / vAngIncrement) + 1) /* Need an extra b/c we only grab half of the top & bottom slices */
-    , SphericalAtlasWidth(6144)
+    , SphericalAtlasWidth(1024) //6144
     , SphericalAtlasHeight(SphericalAtlasWidth / 2)
     , bForceAlpha(false)
     , bEnableBilerp(true)
@@ -129,7 +129,7 @@ USceneCapturer::USceneCapturer(FVTableHelper& Helper)
 	, UseCameraRotation(0)
     , dbgDisableOffsetRotation(false)
 	, OutputBitDepth(8)
-	, bOutputSceneDepth(false)
+	, bOutputSceneDepth(true)
 	, bOutputFinalColor(true)
 	, bOutputWorldNormal(false)
 	, bOutputRoughness(false)
@@ -149,7 +149,7 @@ USceneCapturer::USceneCapturer()
     , eyeSeparation(0.0f)
     , NumberOfHorizontalSteps((int32)(360.0f / hAngIncrement))
     , NumberOfVerticalSteps((int32)(180.0f / vAngIncrement) + 1) /* Need an extra b/c we only grab half of the top & bottom slices */
-    , SphericalAtlasWidth(6144)
+    , SphericalAtlasWidth(1024)  //6144
     , SphericalAtlasHeight(SphericalAtlasWidth / 2)
     , bForceAlpha(false)
     , bEnableBilerp(true)
@@ -160,7 +160,7 @@ USceneCapturer::USceneCapturer()
     , UseCameraRotation(0)
     , dbgDisableOffsetRotation(false)
     , OutputBitDepth(8)
-    , bOutputSceneDepth(false)
+    , bOutputSceneDepth(true)
     , bOutputFinalColor(true)
     , bOutputWorldNormal(false)
     , bOutputRoughness(false)
@@ -1354,6 +1354,7 @@ void USceneCapturer::Tick( float DeltaTime )
 				FFileHelper::SaveStringToFile(FrameDescriptors, *FrameDescriptorName, FFileHelper::EEncodingOptions::ForceUTF8);
 
 				bIsTicking = false;
+                EnablePostProcessVolumes();
                 m_OnSkyBoxCaptureDoneDelegate.Broadcast(); //FStereoPanoramaModule::Get()->Cleanup();
 			}
 		}

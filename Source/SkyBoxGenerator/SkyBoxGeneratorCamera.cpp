@@ -64,8 +64,6 @@ ASkyBoxGeneratorCamera::~ASkyBoxGeneratorCamera()
     m_CaptureCameraActor = NULL;
     m_SceneCapturerObject = NULL;
     SkyBoxWorker::Shutdown();
-    //FSlateApplication::Get().GetRenderer()->OnBackBufferReadyToPresent().RemoveAll(this);
-    //FScreenshotRequest::OnScreenshotRequestProcessed().RemoveAll(this);
 }
 
 void ASkyBoxGeneratorCamera::BeginPlay()
@@ -87,18 +85,16 @@ void ASkyBoxGeneratorCamera::BeginPlay()
 
     if (m_UsePanoramicCapture)
     {
-        ////注意：编辑器运行下，要在“世界场景设置”的游戏模式重载中，指定本项目的ASkyBoxGeneratorGameMode
-        //m_SceneCapturerObject = NewObject<USceneCapturer>(GetWorld(), FName("SkyBoxSceneCapturer"));
-        //m_SceneCapturerObject->AddToRoot();
+        //注意：编辑器运行下，要在“世界场景设置”的游戏模式重载中，指定本项目的ASkyBoxGeneratorGameMode
+        m_SceneCapturerObject = NewObject<USceneCapturer>(GetWorld());
+        m_SceneCapturerObject->AddToRoot();
         //m_SceneCapturerObject->Initialize(CAPTURE_WIDTH, CAPTURE_HIGHT, CAPTURE_FOV);
-        //USkyBoxSceneCapturer::OnSkyBoxCaptureDone().AddUObject(this, &ASkyBoxGeneratorCamera::OnSkyBoxCaptureDone_RenderThread);
         USceneCapturer::OnSkyBoxCaptureDone().AddUObject(this, &ASkyBoxGeneratorCamera::OnSkyBoxCaptureDone_RenderThread);
     }
     else
     {
         if (m_UseActorToCapture)
             CreateCaptureCameraActor();
-
         if (m_UseHighResShot)
             FScreenshotRequest::OnScreenshotRequestProcessed().AddUObject(this, &ASkyBoxGeneratorCamera::OnScreenshotProcessed_RenderThread);
         else
@@ -123,11 +119,7 @@ void ASkyBoxGeneratorCamera::EndPlay(const EEndPlayReason::Type EndPlayReason)
         else
             FSlateApplication::Get().GetRenderer()->OnBackBufferReadyToPresent().RemoveAll(this);
     }
-}
 
-void ASkyBoxGeneratorCamera::ShutDown()
-{
-    UE_LOG(LogTemp, Warning, TEXT("！！！！！！！！！！ASkyBoxGeneratorCamera::ShutDown()"));
     if (m_CaptureCameraActor != NULL)
     {
         m_CaptureCameraActor->RemoveFromRoot();
@@ -141,6 +133,12 @@ void ASkyBoxGeneratorCamera::ShutDown()
         m_SceneCapturerObject->RemoveFromRoot();
         m_SceneCapturerObject = NULL;
     }
+}
+
+void ASkyBoxGeneratorCamera::ShutDown()
+{
+    //转移到EndPlay了
+    UE_LOG(LogTemp, Warning, TEXT("！！！！！！！！！！ASkyBoxGeneratorCamera::ShutDown()"));
 }
 
 bool ASkyBoxGeneratorCamera::ShouldTickIfViewportsOnly() const
@@ -180,9 +178,6 @@ void ASkyBoxGeneratorCamera::Tick(float DeltaTime)
                 CAPTURE_WIDTH, CAPTURE_HIGHT, m_current_job->m_position.scene_id, m_current_job->m_position.x, m_current_job->m_position.y, m_current_job->m_position.z);
             UE_LOG(LogTemp, Warning, TEXT("！！！！！！！！！！call StartCapture，WORLD = %d"), GetWorld());
             //m_SceneCapturerObject->StartCapture(capture_position, file_name_prefix);
-
-            m_SceneCapturerObject = NewObject<USceneCapturer>(GetWorld());
-            m_SceneCapturerObject->AddToRoot();
             FStereoCaptureDoneDelegate EmptyDelegate;
             m_SceneCapturerObject->SetInitialState(0, 0, EmptyDelegate);
         }
@@ -322,11 +317,6 @@ void ASkyBoxGeneratorCamera::OnSkyBoxCaptureDone_RenderThread()
 {
     FScopeLock lock(&m_lock);
     m_CurrentState = CaptureState::Saved;
-
-    m_SceneCapturerObject->bIsTicking = false;
-    m_SceneCapturerObject->Reset();
-    m_SceneCapturerObject->RemoveFromRoot();
-    m_SceneCapturerObject = nullptr;
 }
 
 void ASkyBoxGeneratorCamera::OnScreenshotProcessed_RenderThread()
