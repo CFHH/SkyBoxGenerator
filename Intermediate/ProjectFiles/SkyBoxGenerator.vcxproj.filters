@@ -118,11 +118,17 @@
     <ClInclude Include="..\..\Source\SkyBoxGenerator\Interface.h">
       <Filter>Source\SkyBoxGenerator</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\Source\SkyBoxGenerator\SkyBoxSceneCapturer.h">
+      <Filter>Source\SkyBoxGenerator</Filter>
+    </ClInclude>
     <ClInclude Include="..\..\Source\SkyBoxGenerator\SceneCapturer.h">
       <Filter>Source\SkyBoxGenerator</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="..\..\Source\SkyBoxGenerator\SkyBoxSceneCapturer.cpp">
+      <Filter>Source\SkyBoxGenerator</Filter>
+    </ClCompile>
     <ClCompile Include="..\..\Source\SkyBoxGenerator\SceneCapturer.cpp">
       <Filter>Source\SkyBoxGenerator</Filter>
     </ClCompile>

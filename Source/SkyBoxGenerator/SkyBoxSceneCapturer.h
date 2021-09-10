@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Engine/PostProcessVolume.h"
 #include "Tickable.h"
+#include "SceneCapturer.h"
 #include "SkyBoxSceneCapturer.generated.h"
 
 class IImageWrapperModule;
@@ -11,32 +12,32 @@ class AGameModeBase;
 class USceneCaptureComponent2D;
 
 
-USTRUCT()
-struct FPostProcessVolumeData
-{
-    GENERATED_BODY()
-    UPROPERTY()
-    APostProcessVolume* Object;
-    bool WasEnabled;
-};
-
-enum class ECaptureStep : uint8
-{
-    Unpause,
-    Pause,
-    SetStartPosition,
-    SetPosition,
-    Read,
-    Reset,
-};
-
-enum class ERenderPass : uint8
-{
-    FinalColor,
-    SceneDepth,
-};
-
-DECLARE_MULTICAST_DELEGATE(FOnSkyBoxCaptureDone);
+//USTRUCT()
+//struct FPostProcessVolumeData
+//{
+//    GENERATED_BODY()
+//    UPROPERTY()
+//    APostProcessVolume* Object;
+//    bool WasEnabled;
+//};
+//
+//enum class ECaptureStep : uint8
+//{
+//    Unpause,
+//    Pause,
+//    SetStartPosition,
+//    SetPosition,
+//    Read,
+//    Reset,
+//};
+//
+//enum class ERenderPass : uint8
+//{
+//    FinalColor,
+//    SceneDepth,
+//};
+//
+//DECLARE_MULTICAST_DELEGATE(FOnSkyBoxCaptureDone);
 
 
 UCLASS()
@@ -62,7 +63,6 @@ public:
     void Initialize(int CaptureWidth, int CaptureHeight, float CaptureFov);
     bool StartCapture(FVector CapturePosition, FString FileNamePrefix);
     void Reset();
-    void Cleanup();
 
 private:
     void CacheAllPostProcessVolumes();

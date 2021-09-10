@@ -23,8 +23,8 @@
 #include "UnrealEngine.h"
 #include "UObject/ConstructorHelpers.h"
 
-#define CAPTURE_WIDTH 1024
-#define CAPTURE_HIGHT 1024
+#define CAPTURE_WIDTH 720
+#define CAPTURE_HIGHT 720
 #define CAPTURE_FOV 120.0f
 #define CONCURRENT_CAPTURES_COUNT 6
 
@@ -98,12 +98,8 @@ void USkyBoxSceneCapturer::Initialize(int CaptureWidth, int CaptureHeight, float
 
 void USkyBoxSceneCapturer::Reset()
 {
-    EnableAllPostProcessVolumes();
-}
-
-void USkyBoxSceneCapturer::Cleanup()
-{
     UE_LOG(LogTemp, Warning, TEXT("！！！！！！！！！！USkyBoxSceneCapturer::Cleanup()"));
+    m_IsTicking = false;
     for (int CaptureIndex = 0; CaptureIndex < CONCURRENT_CAPTURES_COUNT; CaptureIndex++)
     {
         USceneCaptureComponent2D* CaptureComponent = m_2DCaptureComponents[CaptureIndex];
@@ -229,68 +225,31 @@ void USkyBoxSceneCapturer::Tick(float DeltaTime)
         for (int32 CaptureIndex = 0; CaptureIndex < CONCURRENT_CAPTURES_COUNT; CaptureIndex++)
         {
             USceneCaptureComponent2D* CaptureComponent = m_2DCaptureComponents[CaptureIndex];
+
             FVector location = CaptureComponent->GetComponentLocation();
             FRotator rotation = CaptureComponent->GetComponentRotation();
             UE_LOG(LogTemp, Warning, TEXT("！！！！！！！！！！USkyBoxSceneCapturer::Tick(), Read, %d, (%.1f，%.1f，%.1f), (%.1f，%.1f，%.1f), WORLD = %d"),
                 CaptureIndex, location.X, location.Y, location.Z, rotation.Roll, rotation.Yaw, rotation.Pitch, CaptureComponent->GetWorld());
 
             FTextureRenderTargetResource* RenderTarget = CaptureComponent->TextureTarget->GameThread_GetRenderTargetResource();
+            uint32 CaptureWidth = RenderTarget->GetSizeX();
+            uint32 CaptureHeight = RenderTarget->GetSizeY();
+            TArray<FLinearColor> SurfaceData;
+            FReadSurfaceDataFlags readSurfaceDataFlags = FReadSurfaceDataFlags();
+            RenderTarget->ReadLinearColorPixels(SurfaceData, readSurfaceDataFlags);
+
             if (m_RenderPasses[m_CurrentRenderPassIndex] == ERenderPass::FinalColor)
             {
                 FString FileName = FString::Printf(TEXT("%s-COLOR-%d.png"), *m_FileNamePrefix, CaptureIndex);
                 UE_LOG(LogTemp, Warning, TEXT("！！！！！！！！！！USkyBoxSceneCapturer::Tick(), ECaptureStep::Read, %s"), *FileName);
-
-                //TArray<FColor> SurfaceData;
-                //FReadSurfaceDataFlags readSurfaceDataFlags = FReadSurfaceDataFlags(); //TODO FReadSurfaceDataFlags构造函数的默认值不是ReadLinearColorPixels的默认参数
-                //RenderTarget->ReadPixels(SurfaceData, readSurfaceDataFlags);
-
-                //TSharedPtr<IImageWrapper> ImageWrapper = m_ImageWrapperModule.CreateImageWrapper(EImageFormat::PNG);
-                //ImageWrapper->SetRaw(SurfaceData.GetData(), SurfaceData.GetAllocatedSize(), CAPTURE_WIDTH, CAPTURE_HIGHT, ERGBFormat::BGRA, 8);
-                //const TArray64<uint8>& ImageData = ImageWrapper->GetCompressed(100);
-                //FFileHelper::SaveArrayToFile(ImageData, *FileName);
-                //ImageWrapper.Reset();
-
-
-
-
-
-                ////PNG Error: Invalid IHDR data
-                //TArray<FLinearColor> SurfaceData;
-                //SurfaceData.AddUninitialized(CAPTURE_WIDTH * CAPTURE_HIGHT);
-                //FReadSurfaceDataFlags readSurfaceDataFlags = FReadSurfaceDataFlags();
-                //RenderTarget->ReadLinearColorPixelsPtr(SurfaceData.GetData(), readSurfaceDataFlags);
-                //for (FLinearColor& Color : SurfaceData)
-                //{
-                //    Color.A = 1.0f;
-                //}
-                //TSharedPtr<IImageWrapper> ImageWrapper = m_ImageWrapperModule.CreateImageWrapper(EImageFormat::PNG);
-                //ImageWrapper->SetRaw(SurfaceData.GetData(), SurfaceData.GetAllocatedSize(), CAPTURE_WIDTH, CAPTURE_HIGHT, ERGBFormat::BGRA, 32);
-                //const TArray64<uint8>& PNGData = ImageWrapper->GetCompressed(100);  //TODO 这个出错
-                //UE_LOG(LogTemp, Warning, TEXT("！！！！！！！！！！USkyBoxSceneCapturer::Tick(), ImageWrapper"));
-                //FFileHelper::SaveArrayToFile(PNGData, *FileName);
-                //ImageWrapper.Reset();
-
-
-
-
-                TArray<FLinearColor> SurfaceData;
-                FReadSurfaceDataFlags readSurfaceDataFlags = FReadSurfaceDataFlags(); //TODO FReadSurfaceDataFlags构造函数的默认值不是ReadLinearColorPixels的默认参数
-                RenderTarget->ReadLinearColorPixels(SurfaceData, readSurfaceDataFlags);
-                TArray<FColor> SurfaceData8bit;
-                float maxR = 0.0f;
-                float minR = 9999999.0f;
+                TArray<FColor> CombinedAtlas8bit;
                 for (FLinearColor& Color : SurfaceData)
                 {
-                    if (Color.R > maxR)
-                        maxR = Color.R;
-                    else if (Color.R < minR)
-                        minR = Color.R;
                     FColor t = Color.Quantize();
-                    SurfaceData8bit.Add(t);
+                    CombinedAtlas8bit.Add(t);
                 }
-                UE_LOG(LogTemp, Warning, TEXT("！！！！！！！！！！MAX_R = %f, MIN_R = %f"), maxR, minR);
                 TSharedPtr<IImageWrapper> ImageWrapper = m_ImageWrapperModule.CreateImageWrapper(EImageFormat::PNG);
-                ImageWrapper->SetRaw(SurfaceData8bit.GetData(), SurfaceData8bit.GetAllocatedSize(), CAPTURE_WIDTH, CAPTURE_HIGHT, ERGBFormat::BGRA, 8);
+                ImageWrapper->SetRaw(CombinedAtlas8bit.GetData(), CombinedAtlas8bit.GetAllocatedSize(), CaptureWidth, CaptureHeight, ERGBFormat::BGRA, 8);
                 const TArray64<uint8>& ImageData = ImageWrapper->GetCompressed(100);
                 FFileHelper::SaveArrayToFile(ImageData, *FileName);
                 ImageWrapper.Reset();
@@ -298,10 +257,7 @@ void USkyBoxSceneCapturer::Tick(float DeltaTime)
             else if (m_RenderPasses[m_CurrentRenderPassIndex] == ERenderPass::SceneDepth)
             {
                 FString FileName = FString::Printf(TEXT("%s-DEPTH-%d.png"), *m_FileNamePrefix, CaptureIndex);
-
-                TArray<FLinearColor> SurfaceData;
-                FReadSurfaceDataFlags readSurfaceDataFlags = FReadSurfaceDataFlags(); //TODO FReadSurfaceDataFlags构造函数的默认值不是ReadLinearColorPixels的默认参数
-                RenderTarget->ReadLinearColorPixels(SurfaceData, readSurfaceDataFlags);
+                UE_LOG(LogTemp, Warning, TEXT("！！！！！！！！！！USkyBoxSceneCapturer::Tick(), ECaptureStep::Read, %s"), *FileName);
                 for (FLinearColor& Color : SurfaceData)
                 {
                     // unpack 32bit scene depth from 4 channels RGBA
@@ -311,23 +267,9 @@ void USkyBoxSceneCapturer::Tick(float DeltaTime)
                     Color.B = Color.R;
                     Color.A = 1.0f;
                 }
-
-                //原始数据
-                //TSharedPtr<IImageWrapper> ImageWrapper = m_ImageWrapperModule.CreateImageWrapper(EImageFormat::EXR);
-                //ImageWrapper->SetRaw(SurfaceData.GetData(), SurfaceData.GetAllocatedSize(), CAPTURE_WIDTH, CAPTURE_HIGHT, ERGBFormat::RGBA, 32);
-                //const TArray64<uint8>& ImageData = ImageWrapper->GetCompressed((int32)EImageCompressionQuality::Default);
-                //FFileHelper::SaveArrayToFile(ImageData, *FileName);
-                //ImageWrapper.Reset();
-
-                TArray<FColor> SurfaceData8bit;
-                for (FLinearColor& Color : SurfaceData)
-                {
-                    FColor t = Color.Quantize();
-                    SurfaceData8bit.Add(t);
-                }
-                TSharedPtr<IImageWrapper> ImageWrapper = m_ImageWrapperModule.CreateImageWrapper(EImageFormat::PNG);
-                ImageWrapper->SetRaw(SurfaceData8bit.GetData(), SurfaceData8bit.GetAllocatedSize(), CAPTURE_WIDTH, CAPTURE_HIGHT, ERGBFormat::BGRA, 8);
-                const TArray64<uint8>& ImageData = ImageWrapper->GetCompressed(100);
+                TSharedPtr<IImageWrapper> ImageWrapper = m_ImageWrapperModule.CreateImageWrapper(EImageFormat::EXR);
+                ImageWrapper->SetRaw(SurfaceData.GetData(), SurfaceData.GetAllocatedSize(), CaptureWidth, CaptureHeight, ERGBFormat::RGBA, 32);
+                const TArray64<uint8>& ImageData = ImageWrapper->GetCompressed((int32)EImageCompressionQuality::Default);
                 FFileHelper::SaveArrayToFile(ImageData, *FileName);
                 ImageWrapper.Reset();
             }
@@ -347,7 +289,7 @@ void USkyBoxSceneCapturer::Tick(float DeltaTime)
             m_IsTicking = false;
             m_CurrentCaptureStep = ECaptureStep::Unpause;
             m_CaptureGameMode->ClearPause();
-            Reset();
+            EnableAllPostProcessVolumes();
             m_OnSkyBoxCaptureDoneDelegate.Broadcast();
         }
     }

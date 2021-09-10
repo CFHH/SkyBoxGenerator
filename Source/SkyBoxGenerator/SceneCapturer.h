@@ -96,6 +96,7 @@ public:
 	}
 
 public:
+    void Initialize(int inCaptureWidth, int inCaptureHeight, float inCaptureFov) {}
 
 	void InitCaptureComponent( USceneCaptureComponent2D* CaptureComponent, float HFov, float VFov, EStereoscopicPass InStereoPass );
 
@@ -119,6 +120,7 @@ public:
 
 	void ValidateParameters();
 
+    bool StartCapture(FVector CapturePosition, FString FileNamePrefix);
 	void SetInitialState( int32 InStartFrame, int32 InEndFrame, FStereoCaptureDoneDelegate& InStereoCaptureDoneDelegate );
 
 	FString GetCurrentRenderPassName();

@@ -320,6 +320,7 @@ UWorld* USceneCapturer::GetTickableGameObjectWorld() const
 
 void USceneCapturer::Reset()
 {
+	bIsTicking = false;
 	// apply old states on PP volumes
 	EnablePostProcessVolumes();
 
@@ -564,6 +565,13 @@ void USceneCapturer::ValidateParameters()
 	FMessageLog(StereoPanoramaLogName).Message(EMessageSeverity::Info, FText::Format(LOCTEXT("ValidationInfo_StripSize", " ... strip size: {StripWidth} x {StripHeight}"), Args));
 	FMessageLog(StereoPanoramaLogName).Message(EMessageSeverity::Info, FText::Format(LOCTEXT("ValidationInfo_NumHorizonalSteps", " ... horizontal steps: {NumberOfHorizontalSteps} at {hAngIncrement} degrees"), Args));
 	FMessageLog(StereoPanoramaLogName).Message(EMessageSeverity::Info, FText::Format(LOCTEXT("ValidationInfo_NumVerticalSteps", " ... vertical steps: {NumberOfVerticalSteps} at {vAngIncrement} degrees"), Args));
+}
+
+bool USceneCapturer::StartCapture(FVector CapturePosition, FString FileNamePrefix)
+{
+    FStereoCaptureDoneDelegate EmptyDelegate;
+    SetInitialState(0, 0, EmptyDelegate);
+    return true;
 }
 
 void USceneCapturer::SetInitialState( int32 InStartFrame, int32 InEndFrame, FStereoCaptureDoneDelegate& InStereoCaptureDoneDelegate )

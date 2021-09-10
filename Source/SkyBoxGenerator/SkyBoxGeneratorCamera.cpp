@@ -12,8 +12,9 @@
 #include "Engine/World.h"
 #include "SkyBoxRPC.h"
 #include "SkyBoxWorker.h"
-#include "SceneCapturer.h"
 #include "SkyBoxGameInstance.h"
+#include "SceneCapturer.h"
+#include "SkyBoxSceneCapturer.h"
 
 #define CAPTURE_WIDTH 1024
 #define CAPTURE_HIGHT 1024
@@ -86,10 +87,10 @@ void ASkyBoxGeneratorCamera::BeginPlay()
     if (m_UsePanoramicCapture)
     {
         //注意：编辑器运行下，要在“世界场景设置”的游戏模式重载中，指定本项目的ASkyBoxGeneratorGameMode
-        m_SceneCapturerObject = NewObject<USceneCapturer>(GetWorld());
+        m_SceneCapturerObject = NewObject<SCENE_CAPTURE_CLASS>(GetWorld());
         m_SceneCapturerObject->AddToRoot();
-        //m_SceneCapturerObject->Initialize(CAPTURE_WIDTH, CAPTURE_HIGHT, CAPTURE_FOV);
-        USceneCapturer::OnSkyBoxCaptureDone().AddUObject(this, &ASkyBoxGeneratorCamera::OnSkyBoxCaptureDone_RenderThread);
+        m_SceneCapturerObject->Initialize(CAPTURE_WIDTH, CAPTURE_HIGHT, CAPTURE_FOV);
+        SCENE_CAPTURE_CLASS::OnSkyBoxCaptureDone().AddUObject(this, &ASkyBoxGeneratorCamera::OnSkyBoxCaptureDone_RenderThread);
     }
     else
     {
@@ -110,7 +111,7 @@ void ASkyBoxGeneratorCamera::EndPlay(const EEndPlayReason::Type EndPlayReason)
     UE_LOG(LogTemp, Warning, TEXT("！！！！！！！！！！ASkyBoxGeneratorCamera::EndPlay()"));
     if (m_UsePanoramicCapture)
     {
-        USceneCapturer::OnSkyBoxCaptureDone().RemoveAll(this);
+        SCENE_CAPTURE_CLASS::OnSkyBoxCaptureDone().RemoveAll(this);
     }
     else
     {
@@ -127,9 +128,7 @@ void ASkyBoxGeneratorCamera::EndPlay(const EEndPlayReason::Type EndPlayReason)
     }
     if (m_SceneCapturerObject != NULL)
     {
-        m_SceneCapturerObject->bIsTicking = false;
         m_SceneCapturerObject->Reset();
-        //m_SceneCapturerObject->Cleanup();
         m_SceneCapturerObject->RemoveFromRoot();
         m_SceneCapturerObject = NULL;
     }
@@ -177,9 +176,9 @@ void ASkyBoxGeneratorCamera::Tick(float DeltaTime)
             FString file_name_prefix = FString::Printf(TEXT("I:\\UE4Workspace\\png\\SkyBox(%dX%d)-Scene%d-(%.1f，%.1f，%.1f)"),
                 CAPTURE_WIDTH, CAPTURE_HIGHT, m_current_job->m_position.scene_id, m_current_job->m_position.x, m_current_job->m_position.y, m_current_job->m_position.z);
             UE_LOG(LogTemp, Warning, TEXT("！！！！！！！！！！call StartCapture，WORLD = %d"), GetWorld());
-            //m_SceneCapturerObject->StartCapture(capture_position, file_name_prefix);
-            FStereoCaptureDoneDelegate EmptyDelegate;
-            m_SceneCapturerObject->SetInitialState(0, 0, EmptyDelegate);
+            m_SceneCapturerObject->StartCapture(capture_position, file_name_prefix);
+            //FStereoCaptureDoneDelegate EmptyDelegate;
+            //m_SceneCapturerObject->SetInitialState(0, 0, EmptyDelegate);
         }
         else
         {
