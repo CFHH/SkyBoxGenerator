@@ -32,6 +32,7 @@
 
 #define CONCURRENT_CAPTURES 8
 #define GENERATE_DEBUG_IMAGES 0
+#define CAPTURE_FOV 120.0f  //30
 FOnSkyBoxCaptureDone USceneCapturer::m_OnSkyBoxCaptureDoneDelegate;
 
 // always combine both eyes
@@ -113,8 +114,8 @@ USceneCapturer::USceneCapturer(FVTableHelper& Helper)
     , bIsTicking(false)
     , CapturePlayerController(NULL)
     , CaptureGameMode(NULL)
-    , hAngIncrement(2.0f)
-    , vAngIncrement(15.0f)
+    , hAngIncrement(60.0f)  //2
+    , vAngIncrement(60.0f)  //15
     , eyeSeparation(0.0f)
     , NumberOfHorizontalSteps((int32)(360.0f / hAngIncrement))
     , NumberOfVerticalSteps((int32)(180.0f / vAngIncrement) + 1) /* Need an extra b/c we only grab half of the top & bottom slices */
@@ -144,8 +145,8 @@ USceneCapturer::USceneCapturer()
     , bIsTicking(false)
     , CapturePlayerController(NULL)
     , CaptureGameMode(NULL)
-    , hAngIncrement(2.0f)
-    , vAngIncrement(15.0f)
+    , hAngIncrement(60.0f)  //2
+    , vAngIncrement(60.0f)  //15
     , eyeSeparation(0.0f)
     , NumberOfHorizontalSteps((int32)(360.0f / hAngIncrement))
     , NumberOfVerticalSteps((int32)(180.0f / vAngIncrement) + 1) /* Need an extra b/c we only grab half of the top & bottom slices */
@@ -169,17 +170,6 @@ USceneCapturer::USceneCapturer()
     , bOutputAmbientOcclusion(false)
     , bMonoscopicMode(true)
 {
-	//NOTE: ikrimae: Keeping the old sampling mechanism just until we're sure the new way is always better
-	dbgMatchCaptureSliceFovToAtlasSliceFov = false;
-
-	// NOTE: fmaheux: Adding support for monoscopic capture: lefteye containers will be used to store data
-	//				  righteye containers will be initialized but wont be processed
-	// remove eye separation to avoid offset in mono
-	if (bMonoscopicMode)  //需要的情况是true，不是VR只需要一只眼睛
-	{
-		eyeSeparation = 0.0f;
-	}
-
 	// Add a message log category for this plugin
 	FMessageLogModule& MessageLogModule = FModuleManager::LoadModuleChecked<FMessageLogModule>("MessageLog");
 	FMessageLogInitializationOptions MessageLogOptions;
@@ -188,87 +178,16 @@ USceneCapturer::USceneCapturer()
 	MessageLogOptions.MaxPageCount = 10;
 	MessageLogModule.RegisterLogListing(StereoPanoramaLogName, LOCTEXT("StereoPanoramaLogLabel", "Panoramic Capture Log"));
 
-	//// Get all blendable materials
-	//ConstructorHelpers::FObjectFinder<UMaterial> Tmp1(TEXT("/Game/Materials/WorldNormal.uasset"));  //"/PanoramicCapture/Materials/WorldNormal.WorldNormal"
-	//MaterialBlendableWorldNormal = Tmp1.Object;
-
-	//ConstructorHelpers::FObjectFinder<UMaterial> Tmp2(TEXT("/Game/Materials/AmbientOcclusion.uasset"));
-	//MaterialBlendableAO = Tmp2.Object;
-
-	//ConstructorHelpers::FObjectFinder<UMaterial> Tmp3(TEXT("/Game/Materials/BaseColor.uasset"));
-	//MaterialBlendableBaseColor = Tmp3.Object;
-
-	//ConstructorHelpers::FObjectFinder<UMaterial> Tmp4(TEXT("/Game/Materials/Metallic.uasset"));
-	//MaterialBlendableMetallic = Tmp4.Object;
-
-	//ConstructorHelpers::FObjectFinder<UMaterial> Tmp5(TEXT("/Game/Materials/Roughness.uasset"));
-	//MaterialBlendableRoughness = Tmp5.Object;
-
 	// Cache all PP volumes and current state
 	CacheAllPostProcessVolumes();
 
-    float captureHFov = 0, captureVFov = 0;
 
-    if (dbgMatchCaptureSliceFovToAtlasSliceFov) //实际情况这里是false
-    {
-
-		// check bitdepth
-		ensure(OutputBitDepth == 8 || OutputBitDepth == 32);
-
-
-		//Slicing Technique 1: Match Capture Slice StripWidth to match the pixel dimensions of AtlasWidth/NumHorizSteps & s.t. stripwidth/stripheight fovs match hAngIncr & vAngIncr
-        //                     Legacy technique but allows setting the strip width to match atlas slice width
-        //                     Pretty wasteful and will break if CaptureHFov & hangIncr/vAngIncr diverge greatly b/c resultant texture will exceed GPU bounds
-        //                     StripHeight is computed based on solving CpxV = CpxH * SpxV / SpxH
-        //                                                               CpxV = CV   * SpxV / SV
-        //                                                               captureVfov = 2 * atan( tan(captureHfov / 2) * (SpxV / SpxH) )
-        sliceHFov = hAngIncrement;
-        sliceVFov = vAngIncrement;
-
-        //TODO: ikrimae: Also do a quick test to see if there are issues with setting fov to something really small ( < 1 degree)
-        //               And it does. Current noted issues: screen space effects like SSAO, AA, SSR are all off
-        //                                                  local eyeadaptation also causes problems. Should probably turn off all PostProcess effects
-        //                                                  small fovs cause floating point errors in the sampling function (probably a bug b/c no thought put towards that)
-        captureHFov = 30.0f;
-
-        ensure(captureHFov >= hAngIncrement);
-
-        //TODO: ikrimae: In hindsight, there's no reason that strip size should be this at all. Just select a square FOV larger than hAngIncr & vAngIncr
-        //               and then sample the resulting plane accordingly. Remember when updating to this to recheck the math in resample function. Might
-        //               have made assumptions about capture slice dimensions matching the sample strips
-        StripWidth = SphericalAtlasWidth / NumberOfHorizontalSteps;
-        //The scenecapture cube won't allow horizontal & vertical fov to not match the aspect ratio so we have to compute the right dimensions here for square pixels
-        StripHeight = StripWidth * FMath::Tan(FMath::DegreesToRadians(vAngIncrement / 2.0f)) / FMath::Tan(FMath::DegreesToRadians(hAngIncrement / 2.0f));
-
-        const FVector2D slicePlaneDim = FVector2D(
-            2.0f * FMath::Tan(FMath::DegreesToRadians(hAngIncrement) / 2.0f),
-            2.0f * FMath::Tan(FMath::DegreesToRadians(vAngIncrement) / 2.0f));
-
-        const float capturePlaneWidth = 2.0f * FMath::Tan(FMath::DegreesToRadians(captureHFov) / 2.0f);
-
-        //TODO: ikrimae: This is just to let the rest of the existing code work. Sampling rate of the slice can be whatever.
-        //      Ex: To match the highest sampling frequency of the spherical atlas, it should match the area of differential patch
-        //      at ray direction of pixel(0,1) in the atlas
-
-        //Need stripwidth/slicePlaneDim.X = capturewidth / capturePlaneDim.X
-        CaptureWidth = capturePlaneWidth * StripWidth / slicePlaneDim.X;
-        CaptureHeight = CaptureWidth * StripHeight / StripWidth;
-
-        captureVFov = FMath::RadiansToDegrees(2 * FMath::Atan(FMath::Tan(FMath::DegreesToRadians(captureHFov / 2.0f)) * CaptureHeight / CaptureWidth));
-
-        //float dbgCapturePlaneDimY = 2.0f * FMath::Tan(FMath::DegreesToRadians(captureVFov) / 2.0f);
-        //float dbgCaptureHeight = dbgCapturePlaneDimY * StripHeight / slicePlaneDim.Y;
-    }
-    else
     {
         //Slicing Technique 2: Each slice is a determined square FOV at a configured preset resolution.
         //                     Strip Width/Strip Height is determined based on hAngIncrement & vAngIncrement
-        //                     Just make sure pixels/captureHFov >= pixels/hAngIncr && pixels/vAngIncr
+        //                     Just make sure pixels/CAPTURE_FOV >= pixels/hAngIncr && pixels/vAngIncr
 
-        captureVFov = captureHFov = 30.0f; //配置是30
-        sliceVFov   = sliceHFov   = captureHFov;
-
-        ensure(captureHFov >= FMath::Max(hAngIncrement, vAngIncrement)); //配置hAngIncrement是2度，vAngIncrement是15度
+        ensure(CAPTURE_FOV >= FMath::Max(hAngIncrement, vAngIncrement)); //配置hAngIncrement是2度，vAngIncrement是15度
 
         //TODO: ikrimae: Re-do for floating point accuracy
         const FVector2D slicePlaneDim = FVector2D(
@@ -276,8 +195,8 @@ USceneCapturer::USceneCapturer()
             2.0f * FMath::Tan(FMath::DegreesToRadians(vAngIncrement) / 2.0f));
 
         const FVector2D capturePlaneDim = FVector2D(
-            2.0f * FMath::Tan(FMath::DegreesToRadians(captureHFov) / 2.0f),
-            2.0f * FMath::Tan(FMath::DegreesToRadians(captureVFov) / 2.0f));
+            2.0f * FMath::Tan(FMath::DegreesToRadians(CAPTURE_FOV) / 2.0f),
+            2.0f * FMath::Tan(FMath::DegreesToRadians(CAPTURE_FOV) / 2.0f));
 
         CaptureHeight = CaptureWidth = 720; //配置是720
 
@@ -312,30 +231,13 @@ USceneCapturer::USceneCapturer()
     //ConcurrentCaptures的配置是8；如果是skybox，配置6，一帧内获得
 	for( int CaptureIndex = 0; CaptureIndex < CONCURRENT_CAPTURES; CaptureIndex++ )
 	{
-		EStereoscopicPass StereoPass = EStereoscopicPass::eSSP_LEFT_EYE;
-		if (bMonoscopicMode)  //true
-		{
-			// use left eye for monoscopic capture
-			StereoPass = EStereoscopicPass::eSSP_FULL;
-		}
-
-		// initialize left eye
 		FString LeftCounter = FString::Printf(TEXT("LeftEyeCaptureComponent_%04d"), CaptureIndex);
 		USceneCaptureComponent2D* LeftEyeCaptureComponent = CreateDefaultSubobject<USceneCaptureComponent2D>(*LeftCounter);
 		LeftEyeCaptureComponent->bTickInEditor = false;
 		LeftEyeCaptureComponent->SetComponentTickEnabled(false);
 		LeftEyeCaptureComponent->AttachToComponent(CaptureSceneComponent, FAttachmentTransformRules::KeepRelativeTransform);
-		InitCaptureComponent( LeftEyeCaptureComponent, captureHFov, captureVFov, StereoPass);
+		InitCaptureComponent( LeftEyeCaptureComponent, CAPTURE_FOV, CAPTURE_FOV, eSSP_FULL);
 		LeftEyeCaptureComponents.Add( LeftEyeCaptureComponent );
-
-		// initialize right eye
-		FString RightCounter = FString::Printf(TEXT("RightEyeCaptureComponent_%04d"), CaptureIndex);
-		USceneCaptureComponent2D* RightEyeCaptureComponent = CreateDefaultSubobject<USceneCaptureComponent2D>(*RightCounter);
-		RightEyeCaptureComponent->bTickInEditor = false;
-		RightEyeCaptureComponent->SetComponentTickEnabled(false);
-		RightEyeCaptureComponent->AttachToComponent(CaptureSceneComponent, FAttachmentTransformRules::KeepRelativeTransform);
-		InitCaptureComponent(RightEyeCaptureComponent, captureHFov, captureVFov, EStereoscopicPass::eSSP_RIGHT_EYE);
-		RightEyeCaptureComponents.Add(RightEyeCaptureComponent);
 	}
 
 	CurrentStep = 0;
@@ -406,21 +308,6 @@ FString USceneCapturer::GetCurrentRenderPassName()
 	return RenderPassString;
 }
 
-UMaterial* USceneCapturer::GetCurrentBlendableMaterial()
-{
-	UMaterial* CurrentBlendable = NULL;
-	//switch (RenderPasses[CurrentRenderPassIndex])
-	//{
-	//	case ERenderPass::WorldNormal: CurrentBlendable = MaterialBlendableWorldNormal; break;
-	//	case ERenderPass::AO: CurrentBlendable = MaterialBlendableAO; break;
-	//	case ERenderPass::BaseColor: CurrentBlendable = MaterialBlendableBaseColor; break;
-	//	case ERenderPass::Metallic: CurrentBlendable = MaterialBlendableMetallic; break;
-	//	case ERenderPass::Roughness: CurrentBlendable = MaterialBlendableRoughness; break;
-	//	default: CurrentBlendable = NULL; break;
-	//}
-	return CurrentBlendable;
-}
-
 UWorld* USceneCapturer::GetTickableGameObjectWorld() const
 {
 	// Check SceneCapturer have CaptureComponents and parent scene component is not marked as pending kill.
@@ -439,34 +326,15 @@ void USceneCapturer::Reset()
 	for( int CaptureIndex = 0; CaptureIndex < CONCURRENT_CAPTURES; CaptureIndex++ )
 	{
 		USceneCaptureComponent2D* LeftEyeCaptureComponent = LeftEyeCaptureComponents[CaptureIndex];
-		USceneCaptureComponent2D* RightEyeCaptureComponent = RightEyeCaptureComponents[CaptureIndex];
 
 		LeftEyeCaptureComponent->SetVisibility( false );
 		LeftEyeCaptureComponent->SetHiddenInGame( true );
-
 		// UE4 cannot serialize an array of subobject pointers, so work around the GC problems
 		LeftEyeCaptureComponent->RemoveFromRoot();
-
-		RightEyeCaptureComponent->SetVisibility( false );
-		RightEyeCaptureComponent->SetHiddenInGame( true );
-
-		// UE4 cannot serialize an array of subobject pointers, so work around the GC problems
-		RightEyeCaptureComponent->RemoveFromRoot();
 	}
 
 	UnprojectedLeftEyeAtlas.Empty();
-	UnprojectedRightEyeAtlas.Empty();
 	CaptureSceneComponent->RemoveFromRoot();
-}
-
-// Make sure we remove all blendables
-void USceneCapturer::RemoveAllBlendables(USceneCaptureComponent2D* CaptureComponent)
-{
-	//CaptureComponent->PostProcessSettings.RemoveBlendable(MaterialBlendableWorldNormal);
-	//CaptureComponent->PostProcessSettings.RemoveBlendable(MaterialBlendableAO);
-	//CaptureComponent->PostProcessSettings.RemoveBlendable(MaterialBlendableBaseColor);
-	//CaptureComponent->PostProcessSettings.RemoveBlendable(MaterialBlendableMetallic);
-	//CaptureComponent->PostProcessSettings.RemoveBlendable(MaterialBlendableRoughness);
 }
 
 // Disable screen space post processes we cannot use while capturing
@@ -520,17 +388,11 @@ void USceneCapturer::DisableAllPostProcessVolumes()
 // setup capture component based on current render pass
 void USceneCapturer::SetCaptureComponentRequirements(int32 CaptureIndex)
 {
-	// remove all blendables
-	RemoveAllBlendables(LeftEyeCaptureComponents[CaptureIndex]);
-	RemoveAllBlendables(RightEyeCaptureComponents[CaptureIndex]);
-
 	// FINAL COLOR
 	if (RenderPasses[CurrentRenderPassIndex] == ERenderPass::FinalColor)
 	{
 		LeftEyeCaptureComponents[CaptureIndex]->bCaptureEveryFrame = false;			// true will create bandings, false wont pick up blendables
 		LeftEyeCaptureComponents[CaptureIndex]->CaptureSource = ESceneCaptureSource::SCS_FinalColorLDR;
-		RightEyeCaptureComponents[CaptureIndex]->bCaptureEveryFrame = false;		// true will create bandings, false wont pick up blendables
-		RightEyeCaptureComponents[CaptureIndex]->CaptureSource = ESceneCaptureSource::SCS_FinalColorLDR;
 
 		// Enable bCaptureEveryFrame ONLY when capture is in a PPVolume with blendables, to avoid bandings
 		FVector CameraPosition = CapturePlayerController->PlayerCameraManager->GetCameraLocation();
@@ -544,7 +406,6 @@ void USceneCapturer::SetCaptureComponentRequirements(int32 CaptureIndex)
 				if (PPVolume.Object->bEnabled && PPVolume.Object->Settings.WeightedBlendables.Array.Num() > 0)
 				{
 					LeftEyeCaptureComponents[CaptureIndex]->bCaptureEveryFrame = true;
-					RightEyeCaptureComponents[CaptureIndex]->bCaptureEveryFrame = true;
 				}
 			}
 
@@ -556,8 +417,6 @@ void USceneCapturer::SetCaptureComponentRequirements(int32 CaptureIndex)
 	{
 		LeftEyeCaptureComponents[CaptureIndex]->bCaptureEveryFrame = false;
 		LeftEyeCaptureComponents[CaptureIndex]->CaptureSource = ESceneCaptureSource::SCS_DeviceDepth;
-		RightEyeCaptureComponents[CaptureIndex]->bCaptureEveryFrame = false;
-		RightEyeCaptureComponents[CaptureIndex]->CaptureSource = ESceneCaptureSource::SCS_DeviceDepth;
 	}
 
 	// All other passes
@@ -565,14 +424,9 @@ void USceneCapturer::SetCaptureComponentRequirements(int32 CaptureIndex)
 	{
 		LeftEyeCaptureComponents[CaptureIndex]->bCaptureEveryFrame = true;										// "true" for blendable to work
 		LeftEyeCaptureComponents[CaptureIndex]->CaptureSource = ESceneCaptureSource::SCS_FinalColorLDR;			// "SCS_FinalColorLDR" for blendable to work
-		LeftEyeCaptureComponents[CaptureIndex]->PostProcessSettings.AddBlendable(GetCurrentBlendableMaterial(), 1.0f);		// add postprocess material
-		RightEyeCaptureComponents[CaptureIndex]->bCaptureEveryFrame = true;										// "true" for blendable to work
-		RightEyeCaptureComponents[CaptureIndex]->CaptureSource = ESceneCaptureSource::SCS_FinalColorLDR;		// "SCS_FinalColorLDR" for blendable to work
-		RightEyeCaptureComponents[CaptureIndex]->PostProcessSettings.AddBlendable(GetCurrentBlendableMaterial(), 1.0f);	// add postprocess material
 	}
 
 	DisableUnsupportedPostProcesses(LeftEyeCaptureComponents[CaptureIndex]);
-	DisableUnsupportedPostProcesses(RightEyeCaptureComponents[CaptureIndex]);
 }
 
 
@@ -615,13 +469,6 @@ void USceneCapturer::SetPositionAndRotation( int32 CurrentHorizontalStep, int32 
 	// Local location will be used to set eye offset.
 	LeftEyeCaptureComponents[CaptureIndex]->SetRelativeLocationAndRotation( -1.0f * Offset, Rotation );
     LeftEyeCaptureComponents[CaptureIndex]->CaptureSceneDeferred(); //Render the scene to the texture the next time the main view is rendered
-
-	// Do not process right eye in mono
-	if (!bMonoscopicMode)
-	{
-		RightEyeCaptureComponents[CaptureIndex]->SetRelativeLocationAndRotation(1.0f * Offset, Rotation);
-		RightEyeCaptureComponents[CaptureIndex]->CaptureSceneDeferred();
-	}
 }
 
 void USceneCapturer::ValidateParameters()
@@ -654,13 +501,6 @@ void USceneCapturer::ValidateParameters()
 			FMessageLog(StereoPanoramaLogName).Message(EMessageSeverity::Error, LOCTEXT("ValidationError_MissingOutputDirectory", "The output directory's drive doesn't exists. Plese set SP.OutputDir with a valid path. Skipping renders..."));
 		}
 	}
-
-	//// check if we have found all blendables
-	//if (MaterialBlendableAO == NULL || MaterialBlendableBaseColor == NULL || MaterialBlendableMetallic == NULL || MaterialBlendableRoughness == NULL || MaterialBlendableWorldNormal == NULL)
-	//{
-	//	ErrorFound = true;
-	//	FMessageLog(StereoPanoramaLogName).Message(EMessageSeverity::Error, LOCTEXT("ValidationError_MissingBlendableMaterials", "Missing blendable materials. Skipping renders..."));
-	//}
 
 	// Angular increment needs to be a factor of 360 to avoid seams i.e. 360 / angular increment needs to be a whole number
 	if ((int32)(NumberOfHorizontalSteps * hAngIncrement) != 360)
@@ -716,14 +556,7 @@ void USceneCapturer::ValidateParameters()
 
 	FMessageLog(StereoPanoramaLogName).Message(EMessageSeverity::Info, LOCTEXT("ValidationInfo_PanoramicScreenshotParams", "Panoramic screenshot parameters"));
 
-	if (bMonoscopicMode)
-	{
-		FMessageLog(StereoPanoramaLogName).Message(EMessageSeverity::Info, LOCTEXT("ValidationInfo_MonoscopicMode", " ... In Monoscopic mode"));
-	}
-	else
-	{
-		FMessageLog(StereoPanoramaLogName).Message(EMessageSeverity::Info, LOCTEXT("ValidationInfo_StereoscopicMode", " ... In Stereoscopic mode"));
-	}
+	FMessageLog(StereoPanoramaLogName).Message(EMessageSeverity::Info, LOCTEXT("ValidationInfo_MonoscopicMode", " ... In Monoscopic mode"));
 
 	FMessageLog(StereoPanoramaLogName).Message(EMessageSeverity::Info, FText::Format(LOCTEXT("ValidationInfo_CaptureSize", " ... capture size: {CaptureWidth} x {CaptureHeight}"), Args));
 	FMessageLog(StereoPanoramaLogName).Message(EMessageSeverity::Info, FText::Format(LOCTEXT("ValidationInfo_SphericalAtlasSize", " ... spherical atlas size: {SphericalAtlasWidth} x {SphericalAtlasHeight}"), Args));
@@ -768,7 +601,6 @@ void USceneCapturer::SetInitialState( int32 InStartFrame, int32 InEndFrame, FSte
 	// Create storage for atlas textures
     check( UnprojectedAtlasWidth * UnprojectedAtlasHeight <= MAX_int32 );
 	UnprojectedLeftEyeAtlas.AddUninitialized(  UnprojectedAtlasWidth * UnprojectedAtlasHeight );
-    UnprojectedRightEyeAtlas.AddUninitialized( UnprojectedAtlasWidth * UnprojectedAtlasHeight );
 
 	StartTime        = FDateTime::UtcNow();
 	OverallStartTime = StartTime;
@@ -802,12 +634,12 @@ TArray<FLinearColor> USceneCapturer::SaveAtlas(FString Folder, const TArray<FLin
 {
 	SCOPE_CYCLE_COUNTER(STAT_SPSavePNG);
 
-	TArray<FLinearColor> SphericalAtlas;
+	TArray<FLinearColor> SphericalAtlas;  //最终返回的
 	SphericalAtlas.AddZeroed(SphericalAtlasWidth * SphericalAtlasHeight);
 
 	const FVector2D slicePlaneDim = FVector2D(
-		2.0f * FMath::Tan(FMath::DegreesToRadians(sliceHFov) / 2.0f),
-		2.0f * FMath::Tan(FMath::DegreesToRadians(sliceVFov) / 2.0f));
+		2.0f * FMath::Tan(FMath::DegreesToRadians(CAPTURE_FOV) / 2.0f),
+		2.0f * FMath::Tan(FMath::DegreesToRadians(CAPTURE_FOV) / 2.0f));
 
 	//For each direction,
 	//    Find corresponding slice
@@ -915,8 +747,8 @@ TArray<FLinearColor> USceneCapturer::SaveAtlas(FString Folder, const TArray<FLin
 						sliceV <= (0.5f + KINDA_SMALL_NUMBER));
 
 					//TODO: ikrimae: Supersample/bilinear filter
-					const int32 slicePixelX = FMath::TruncToInt(dbgMatchCaptureSliceFovToAtlasSliceFov ? sliceU * StripWidth : sliceU * CaptureWidth);
-					const int32 slicePixelY = FMath::TruncToInt(dbgMatchCaptureSliceFovToAtlasSliceFov ? sliceV * StripHeight : sliceV * CaptureHeight);
+					const int32 slicePixelX = FMath::TruncToInt(sliceU * CaptureWidth);
+					const int32 slicePixelY = FMath::TruncToInt(sliceV * CaptureHeight);
 
 					FLinearColor slicePixelSample;
 
@@ -936,8 +768,8 @@ TArray<FLinearColor> USceneCapturer::SaveAtlas(FString Folder, const TArray<FLin
 						const FLinearColor pixelColorBL = SurfaceData[atlasSampleBL.Y * UnprojectedAtlasWidth + atlasSampleBL.X];
 						const FLinearColor pixelColorBR = SurfaceData[atlasSampleBR.Y * UnprojectedAtlasWidth + atlasSampleBR.X];
 
-						const float fracX = FMath::Frac(dbgMatchCaptureSliceFovToAtlasSliceFov ? sliceU * StripWidth : sliceU * CaptureWidth);
-						const float fracY = FMath::Frac(dbgMatchCaptureSliceFovToAtlasSliceFov ? sliceV * StripHeight : sliceV * CaptureHeight);
+						const float fracX = FMath::Frac(sliceU * CaptureWidth);
+						const float fracY = FMath::Frac(sliceV * CaptureHeight);
 
 						//Reinterpret as linear (a.k.a dont apply srgb inversion)
 						slicePixelSample = FMath::BiLerp(pixelColorTL, pixelColorTR, pixelColorBL, pixelColorBR, fracX, fracY);
@@ -1029,6 +861,46 @@ void USceneCapturer::CaptureComponent(int32 CurrentHorizontalStep, int32 Current
 
 	// Copy off strip to atlas texture
 	CopyToUnprojAtlas(CurrentHorizontalStep, CurrentVerticalStep, Atlas, SurfaceData);
+
+    //SurfaceData.GetAllocatedSize() = StripWidth * StripHeight * 4(RGBA) * 4(float)
+    //UE_LOG(LogTemp, Warning, TEXT("！！！！！！！！！！CaptureComponent, %d, %d, %d"), SurfaceData.GetAllocatedSize(), StripWidth, StripHeight);
+
+    if (OutputBitDepth == 8 && RenderPasses[CurrentRenderPassIndex] != ERenderPass::SceneDepth)
+    {
+        TArray<FColor> CombinedAtlas8bit;
+        for (FLinearColor& Color : SurfaceData)
+        {
+            FColor t = Color.Quantize();
+            CombinedAtlas8bit.Add(t);
+        }
+
+        FString TickString = FString::Printf(TEXT("_%05d_%04d_%04d"), CurrentFrameCount, CurrentHorizontalStep, CurrentVerticalStep);
+        FString CaptureName = OutputDir / Timestamp / Folder / TickString + TEXT(".png");
+
+        //SurfaceData.GetAllocatedSize() = StripWidth * StripHeight * 4(RGBA) * 4(float)
+        UE_LOG(LogTemp, Warning, TEXT("！！！！！！！！！！CaptureComponent, SurfaceData = %d, CombinedAtlas8bit = %d, StripWidth = %d, StripHeight = %d"),
+            SurfaceData.GetAllocatedSize() / sizeof(FLinearColor), CombinedAtlas8bit.GetAllocatedSize() / sizeof(FColor), StripWidth, StripHeight);
+
+        // write
+        TSharedPtr<IImageWrapper> ImageWrapper = ImageWrapperModule.CreateImageWrapper(EImageFormat::PNG);
+        ImageWrapper->SetRaw(CombinedAtlas8bit.GetData(), CombinedAtlas8bit.GetAllocatedSize(), StripWidth, StripHeight, ERGBFormat::BGRA, 8);
+        const TArray64<uint8>& ImageData = ImageWrapper->GetCompressed(100);
+        FFileHelper::SaveArrayToFile(ImageData, *CaptureName);
+        ImageWrapper.Reset();
+    }
+    else
+    {
+        FString TickString = FString::Printf(TEXT("_%05d_%04d_%04d"), CurrentFrameCount, CurrentHorizontalStep, CurrentVerticalStep);
+        FString CaptureName = OutputDir / Timestamp / Folder / TickString + TEXT(".exr");
+
+        // write
+        TSharedPtr<IImageWrapper> ImageWrapper = ImageWrapperModule.CreateImageWrapper(EImageFormat::EXR);
+        ImageWrapper->SetRaw(SurfaceData.GetData(), SurfaceData.GetAllocatedSize(), StripWidth, StripHeight, ERGBFormat::RGBA, 32);
+        const TArray64<uint8>& ImageData = ImageWrapper->GetCompressed((int32)EImageCompressionQuality::Default);
+        FFileHelper::SaveArrayToFile(ImageData, *CaptureName);
+        ImageWrapper.Reset();
+    }
+
 
 	// DEBUG ONLY
 	if (GENERATE_DEBUG_IMAGES != 0)
@@ -1209,10 +1081,6 @@ void USceneCapturer::Tick( float DeltaTime )
 				if (GetComponentSteps(CurrentStep, CurrentHorizontalStep, CurrentVerticalStep))
 				{
 					CaptureComponent(CurrentHorizontalStep, CurrentVerticalStep, TEXT("Left"), LeftEyeCaptureComponents[CaptureIndex], UnprojectedLeftEyeAtlas);
-					if (!bMonoscopicMode)
-					{
-						CaptureComponent(CurrentHorizontalStep, CurrentVerticalStep, TEXT("Right"), RightEyeCaptureComponents[CaptureIndex], UnprojectedRightEyeAtlas);
-					}
 					CurrentStep++;
                 }
             }
@@ -1225,37 +1093,33 @@ void USceneCapturer::Tick( float DeltaTime )
             //ECaptureStep::Reset:
 		}
 	}
-	else
+	else  // 也就是CurrentStep >= TotalSteps
 	{
 		TArray<FLinearColor> SphericalLeftEyeAtlas  = SaveAtlas(TEXT("Left"), UnprojectedLeftEyeAtlas);
-		TArray<FLinearColor> SphericalRightEyeAtlas;
 
-		if (CombineAtlasesOnOutput)
+		if (CombineAtlasesOnOutput)  //true
 		{
 			TArray<FLinearColor> CombinedAtlas;
 			CombinedAtlas.Append(SphericalLeftEyeAtlas);
 			int32 EyeCount = 1;
 
-			// combine right eye in stereo
-			if (!bMonoscopicMode)
-			{
-				SphericalRightEyeAtlas = SaveAtlas(TEXT("Right"), UnprojectedRightEyeAtlas);
-				CombinedAtlas.Append(SphericalRightEyeAtlas);
-				EyeCount++;
-			}
-
 			// Get current render pass name
 			FString RenderPassString = GetCurrentRenderPassName();
 
-			// save to disk
+			// save to disk 真正的保存
 			if (OutputBitDepth == 8 && RenderPasses[CurrentRenderPassIndex] != ERenderPass::SceneDepth) //OutputBitDepth配置是8
 			{
 				// switch to 8 bit/channel
 				TArray<FColor> CombinedAtlas8bit;
+                int count = 0;
 				for (FLinearColor& Color : CombinedAtlas)
 				{
 					FColor t = Color.Quantize();
 					CombinedAtlas8bit.Add(t);
+                    ++count;
+                    if (count % 100000 == 0)
+                        UE_LOG(LogTemp, Warning, TEXT("！！！！！！！！！！FINAL PNG, CombinedAtlas8bit = %d, OP count = %d"),
+                            CombinedAtlas8bit.GetAllocatedSize() / sizeof(FColor), count);
 				}
 
 				// save as png 8bit/channel
@@ -1263,6 +1127,10 @@ void USceneCapturer::Tick( float DeltaTime )
 				FString AtlasName = OutputDir / Timestamp / RenderPassString / FrameString;
 				FString Msg = FString("Writing file: " + AtlasName);
 				FMessageLog(StereoPanoramaLogName).Message(EMessageSeverity::Info, FText::FromString(Msg));
+
+                //CombinedAtlas.GetAllocatedSize() = SphericalAtlasWidth * SphericalAtlasHeight * EyeCount * 4(BGRA) * 4(float)
+                UE_LOG(LogTemp, Warning, TEXT("！！！！！！！！！！FINAL PNG, CombinedAtlas = %d, CombinedAtlas8bit = %d, SphericalAtlasWidth = %d, SphericalAtlasHeight = %d, sizeof(FColor) = %d, OP count = %d"),
+                    CombinedAtlas.GetAllocatedSize(), CombinedAtlas8bit.GetAllocatedSize(), SphericalAtlasWidth, SphericalAtlasHeight, sizeof(FColor), count);
 
 				// write
 				TSharedPtr<IImageWrapper> ImageWrapper = ImageWrapperModule.CreateImageWrapper(EImageFormat::PNG);
@@ -1300,9 +1168,7 @@ void USceneCapturer::Tick( float DeltaTime )
 			CurrentStep = 0;
 			CaptureStep = ECaptureStep::SetStartPosition;
 			UnprojectedLeftEyeAtlas.Empty();
-			UnprojectedRightEyeAtlas.Empty();
 			UnprojectedLeftEyeAtlas.AddUninitialized(UnprojectedAtlasWidth * UnprojectedAtlasHeight);
-			UnprojectedRightEyeAtlas.AddUninitialized(UnprojectedAtlasWidth * UnprojectedAtlasHeight);
 		}
 		else
 		{
@@ -1321,7 +1187,7 @@ void USceneCapturer::Tick( float DeltaTime )
 
 			//NOTE: ikrimae: Since we can't synchronously finish a stereocapture, we have to notify the caller with a function pointer
 			//Not sure this is the cleanest way but good enough for now
-			StereoCaptureDoneDelegate.ExecuteIfBound(SphericalLeftEyeAtlas, SphericalRightEyeAtlas);
+			//StereoCaptureDoneDelegate.ExecuteIfBound(SphericalLeftEyeAtlas, SphericalRightEyeAtlas);
 
 			// Construct log of saved atlases in csv format
 			FrameDescriptors += FString::Printf(TEXT("%d, %g, %g" LINE_TERMINATOR), CurrentFrameCount, FApp::GetCurrentTime() - FApp::GetLastTime(), Duration.GetTotalSeconds());
@@ -1358,7 +1224,7 @@ void USceneCapturer::Tick( float DeltaTime )
                 m_OnSkyBoxCaptureDoneDelegate.Broadcast(); //FStereoPanoramaModule::Get()->Cleanup();
 			}
 		}
-	}
+	}  // end 也就是CurrentStep >= TotalSteps
 }
 
 #undef LOCTEXT_NAMESPACE

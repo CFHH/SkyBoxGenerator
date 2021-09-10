@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #pragma once
 
 #include "CoreMinimal.h"
@@ -119,15 +117,11 @@ public:
 
 	void DisableUnsupportedPostProcesses(USceneCaptureComponent2D* CaptureComponent);
 
-	void RemoveAllBlendables(USceneCaptureComponent2D* CaptureComponent);
-
 	void ValidateParameters();
 
 	void SetInitialState( int32 InStartFrame, int32 InEndFrame, FStereoCaptureDoneDelegate& InStereoCaptureDoneDelegate );
 
 	FString GetCurrentRenderPassName();
-
-	UMaterial* GetCurrentBlendableMaterial();
 
 	void Reset();
 
@@ -154,13 +148,6 @@ public:
 	int32 StripWidth;
     int32 StripHeight;
 
-	//// blendable materials for each pass
-	//UMaterial* MaterialBlendableWorldNormal;
-	//UMaterial* MaterialBlendableAO;
-	//UMaterial* MaterialBlendableBaseColor;
-	//UMaterial* MaterialBlendableMetallic;
-	//UMaterial* MaterialBlendableRoughness;
-
 	// store which passes to do per frame
 	TArray<ERenderPass> RenderPasses;
 	int CurrentRenderPassIndex;
@@ -172,8 +159,7 @@ public:
 	class APlayerController* CapturePlayerController;
 	class AGameModeBase* CaptureGameMode;
 
-	TArray<USceneCaptureComponent2D*> LeftEyeCaptureComponents;
-	TArray<USceneCaptureComponent2D*> RightEyeCaptureComponents;
+    TArray<USceneCaptureComponent2D*> LeftEyeCaptureComponents;
 	
 	// CaptureSceneComponent will be used as parent of capturecomponents to provide world location and rotation.
 	UPROPERTY(Transient)
@@ -196,9 +182,6 @@ private:
     const float hAngIncrement;
     const float vAngIncrement;
     float eyeSeparation;
-    
-    float sliceHFov;
-    float sliceVFov;
 
     const int32 NumberOfHorizontalSteps;
     const int32 NumberOfVerticalSteps;
@@ -213,7 +196,6 @@ private:
 	int32 TotalSteps;
 
     TArray<FLinearColor> UnprojectedLeftEyeAtlas;
-    TArray<FLinearColor> UnprojectedRightEyeAtlas;
 
     const bool bForceAlpha;
     const bool bEnableBilerp;
@@ -225,7 +207,6 @@ private:
 	// UseCameraRotation will be used for gathering selected rotational axis of user's camera.
 	const int32 UseCameraRotation;
 
-    bool dbgMatchCaptureSliceFovToAtlasSliceFov;
     bool dbgDisableOffsetRotation;
 	FString FrameDescriptors;
 
