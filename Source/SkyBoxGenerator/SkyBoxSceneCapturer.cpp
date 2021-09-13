@@ -98,7 +98,7 @@ void USkyBoxSceneCapturer::Initialize(int CaptureWidth, int CaptureHeight, float
 
 void USkyBoxSceneCapturer::Reset()
 {
-    UE_LOG(LogTemp, Warning, TEXT("！！！！！！！！！！USkyBoxSceneCapturer::Cleanup()"));
+    UE_LOG(LogTemp, Warning, TEXT("！！！！！！！！！！USkyBoxSceneCapturer::Reset()"));
     m_IsTicking = false;
     for (int CaptureIndex = 0; CaptureIndex < CONCURRENT_CAPTURES_COUNT; CaptureIndex++)
     {

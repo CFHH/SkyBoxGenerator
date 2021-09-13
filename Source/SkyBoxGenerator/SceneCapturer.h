@@ -79,62 +79,48 @@ public:
     void Initialize(int inCaptureWidth, int inCaptureHeight, float inCaptureFov);
     void Reset();
     bool StartCapture(FVector CapturePosition, FString FileNamePrefix);
-    void SetInitialState(int32 InStartFrame, int32 InEndFrame, FStereoCaptureDoneDelegate& InStereoCaptureDoneDelegate);
 
 private:
     void CacheAllPostProcessVolumes();
     void DisableAllPostProcessVolumes();
     void EnablePostProcessVolumes();
 
-    void InitCaptureComponent(USceneCaptureComponent2D* CaptureComponent, float HFov, float VFov, EStereoscopicPass InStereoPass);
+    void InitCaptureComponent(USceneCaptureComponent2D* CaptureComponent);
     void DisableUnsupportedPostProcesses(USceneCaptureComponent2D* CaptureComponent);
     void SetCaptureComponentRequirements(int32 CaptureIndex);
-	void CaptureComponent(int32 CurrentHorizontalStep, int32 CurrentVerticalStep, FString Folder, USceneCaptureComponent2D* CaptureComponent);
+	void CaptureScene(int32 CurrentHorizontalStep, int32 CurrentVerticalStep, FString Folder, USceneCaptureComponent2D* CaptureComponent);
     FString GetCurrentRenderPassName();
 
 private:
     static FOnSkyBoxCaptureDone m_OnSkyBoxCaptureDoneDelegate;
-	IImageWrapperModule& ImageWrapperModule;
+    IImageWrapperModule& ImageWrapperModule;
+    const int32 OutputBitDepth;
 
-	bool bIsTicking;
+    UPROPERTY(Transient)
+        TArray <FPostProcessVolumeData> PPVolumeArray;
+
+    UPROPERTY(Transient)
+        USceneComponent* CaptureSceneComponent;
+
+    TArray<USceneCaptureComponent2D*> LeftEyeCaptureComponents;
+
+    TArray<ERenderPass> RenderPasses;
+
+    int CurrentRenderPassIndex;
+    ECaptureStep CaptureStep;
+
+    FString m_FileNamePrefix;
+
+
+    bool bIsTicking;
+    APlayerController* CapturePlayerController;
+    AGameModeBase* CaptureGameMode;
+
 	FDateTime OverallStartTime;
 	FDateTime StartTime;
 
 	FString Timestamp;
 
-	ECaptureStep CaptureStep;
-
-	// store which passes to do per frame
-	TArray<ERenderPass> RenderPasses;
-	int CurrentRenderPassIndex;
-
-	// store post process volumes data
-	UPROPERTY(Transient)
-	TArray <FPostProcessVolumeData> PPVolumeArray;
-
-	class APlayerController* CapturePlayerController;
-	class AGameModeBase* CaptureGameMode;
-
-    TArray<USceneCaptureComponent2D*> LeftEyeCaptureComponents;
-	
-	// CaptureSceneComponent will be used as parent of capturecomponents to provide world location and rotation.
-	UPROPERTY(Transient)
-	USceneComponent* CaptureSceneComponent;
-
-
-private:
-
-
-    int32 CurrentStep;
-	int32 TotalSteps;
-
     const FString OutputDir;
-
 	FString FrameDescriptors;
-
-	const int32 OutputBitDepth;
-	const bool bOutputSceneDepth;
-	const bool bOutputFinalColor;
-
-    FStereoCaptureDoneDelegate StereoCaptureDoneDelegate;
 };
