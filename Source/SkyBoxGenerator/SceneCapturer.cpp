@@ -41,10 +41,6 @@ USceneCapturer::USceneCapturer(FVTableHelper& Helper)
     , bIsTicking(false)
     , CapturePlayerController(NULL)
     , CaptureGameMode(NULL)
-    , hAngIncrement(90.0f)  //2
-    , vAngIncrement(90.0f)  //15
-    , NumberOfHorizontalSteps((int32)(360.0f / hAngIncrement))
-    , NumberOfVerticalSteps((int32)(180.0f / vAngIncrement) + 1) /* Need an extra b/c we only grab half of the top & bottom slices */
     , OutputDir(TEXT("I:/UE4Workspace/png/mycapture"))
 	, OutputBitDepth(8)
 	, bOutputSceneDepth(true)
@@ -57,10 +53,6 @@ USceneCapturer::USceneCapturer()
     , bIsTicking(false)
     , CapturePlayerController(NULL)
     , CaptureGameMode(NULL)
-    , hAngIncrement(90.0f)  //2
-    , vAngIncrement(90.0f)  //15
-    , NumberOfHorizontalSteps((int32)(360.0f / hAngIncrement))
-    , NumberOfVerticalSteps((int32)(180.0f / vAngIncrement) + 1) /* Need an extra b/c we only grab half of the top & bottom slices */
     , OutputDir(TEXT("I:/UE4Workspace/png/mycapture"))
     , OutputBitDepth(8)
     , bOutputSceneDepth(true)
@@ -77,23 +69,6 @@ USceneCapturer::USceneCapturer()
 	// Cache all PP volumes and current state
 	CacheAllPostProcessVolumes();
 
-
-    {
-        //Slicing Technique 2: Each slice is a determined square FOV at a configured preset resolution.
-        //                     Strip Width/Strip Height is determined based on hAngIncrement & vAngIncrement
-        //                     Just make sure pixels/CAPTURE_FOV >= pixels/hAngIncr && pixels/vAngIncr
-
-        ensure(CAPTURE_FOV >= FMath::Max(hAngIncrement, vAngIncrement)); //配置hAngIncrement是2度，vAngIncrement是15度
-
-        //TODO: ikrimae: Re-do for floating point accuracy
-        const FVector2D slicePlaneDim = FVector2D(
-            2.0f * FMath::Tan(FMath::DegreesToRadians(hAngIncrement) / 2.0f),
-            2.0f * FMath::Tan(FMath::DegreesToRadians(vAngIncrement) / 2.0f));
-
-        const FVector2D capturePlaneDim = FVector2D(
-            2.0f * FMath::Tan(FMath::DegreesToRadians(CAPTURE_FOV) / 2.0f),
-            2.0f * FMath::Tan(FMath::DegreesToRadians(CAPTURE_FOV) / 2.0f));
-    }
 
     //NOTE: ikrimae: Ensure that the main gameview is > CaptureWidth x CaptureHeight. Bug in UE4 that won't re-alloc scene render targets to the correct size
     //               when the scenecapture component > current window render target. https://answers.unrealengine.com/questions/80531/scene-capture-2d-max-resolution.html
@@ -120,7 +95,7 @@ USceneCapturer::USceneCapturer()
 	}
 
 	CurrentStep = 0;
-	TotalSteps = 0;  //后面赋值NumberOfHorizontalSteps * NumberOfVerticalSteps;
+	TotalSteps = CONCURRENT_CAPTURES;
 	FrameDescriptors = TEXT( "FrameNumber, GameClock, TimeTaken(s)" LINE_TERMINATOR );
 	CaptureStep = ECaptureStep::Reset;
 
@@ -188,9 +163,6 @@ void USceneCapturer::SetInitialState(int32 InStartFrame, int32 InEndFrame, FSter
         return;
     }
 
-    //TotalSteps = NumberOfHorizontalSteps * NumberOfVerticalSteps;
-    TotalSteps = CONCURRENT_CAPTURES;
-
     // Setup starting criteria
     CurrentStep = 0;
     CaptureStep = ECaptureStep::Unpause;
@@ -232,9 +204,7 @@ UWorld* USceneCapturer::GetTickableGameObjectWorld() const
 void USceneCapturer::Tick( float DeltaTime )
 {
 	if( !bIsTicking )
-	{
 		return;
-	}
 
     if( CurrentStep < TotalSteps )
 	{
@@ -249,13 +219,8 @@ void USceneCapturer::Tick( float DeltaTime )
         else if (CaptureStep == ECaptureStep::Pause)
         {
             FlushRenderingCommands();
-
-			// To prevent following process when tick at the time of PIE ends and CaptureGameMode is no longer valid.
 			if (!CaptureGameMode)
-			{
 				return;
-			}
-
             CaptureGameMode->SetPause(CapturePlayerController);
             //GPauseRenderingRealtimeClock = true;
             CaptureStep = ECaptureStep::SetStartPosition;
@@ -263,43 +228,30 @@ void USceneCapturer::Tick( float DeltaTime )
         }
         else if (CaptureStep == ECaptureStep::SetStartPosition)
         {
-            //SetStartPosition();
             ENQUEUE_RENDER_COMMAND(SceneCapturer_HeartbeatTickTickables)(
 				[](FRHICommandList& RHICmdList)
 				{
 					TickRenderingTickables();
 				});
-
             FlushRenderingCommands();
 
+            FVector Location;
             FRotator Rotation;
-            CapturePlayerController->GetPlayerViewPoint(StartLocation, Rotation);
-            // Gathering selected axis information from UseCameraRotation and saving it to FRotator Rotation.
-			Rotation = FRotator(0.0f , 0.0f, 0.0f);
-            StartRotation = Rotation;
+            CapturePlayerController->GetPlayerViewPoint(Location, Rotation);
+			CaptureSceneComponent->SetWorldLocationAndRotation(Location, FRotator(0.0f, 0.0f, 0.0f));
+            UE_LOG(LogTemp, Warning, TEXT("！！！！！！！！！！SetStartPosition (%.1f，%.1f，%.1f)"), Location.X, Location.Y, Location.Z);
 
-			// Set Designated Rotation and Location for CaptureSceneComponent, using it as parent scene component for capturecomponents.
-			CaptureSceneComponent->SetWorldLocationAndRotation(StartLocation, Rotation);
-            UE_LOG(LogTemp, Warning, TEXT("！！！！！！！！！！SetStartPosition (%.1f，%.1f，%.1f)"), StartLocation.X, StartLocation.Y, StartLocation.Z);
-
-			// set capture components settings before capturing and reading
 			for (int32 CaptureIndex = 0; CaptureIndex < CONCURRENT_CAPTURES; CaptureIndex++)
-			{
 				SetCaptureComponentRequirements(CaptureIndex);
-			}
 
 			FString CurrentPassName = GetCurrentRenderPassName();
 			FString Msg = FString("Processing pass: " + CurrentPassName);
 			FMessageLog(StereoPanoramaLogName).Message(EMessageSeverity::Info, FText::FromString(Msg));
 
 			if (RenderPasses[CurrentRenderPassIndex] != ERenderPass::FinalColor)
-			{
 				DisableAllPostProcessVolumes();
-			}
 			else
-			{
 				EnablePostProcessVolumes();
-			}
 
             CaptureStep = ECaptureStep::SetPosition;
             FlushRenderingCommands();
@@ -317,7 +269,6 @@ void USceneCapturer::Tick( float DeltaTime )
             {
                 LeftEyeCaptureComponents[CaptureIndex]->CaptureSceneDeferred(); //Render the scene to the texture the next time the main view is rendered
             }
-
             CaptureStep = ECaptureStep::Read;
             FlushRenderingCommands();
         }
@@ -404,6 +355,7 @@ void USceneCapturer::Tick( float DeltaTime )
 		}
 	}  // end 也就是CurrentStep >= TotalSteps
 }
+
 
 /**********************************************************************************************************************/
 //帮助函数

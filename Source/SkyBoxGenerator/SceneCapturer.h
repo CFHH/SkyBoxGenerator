@@ -100,8 +100,6 @@ private:
 	FDateTime OverallStartTime;
 	FDateTime StartTime;
 
-	FVector StartLocation;
-	FRotator StartRotation;
 	FString Timestamp;
 
 	ECaptureStep CaptureStep;
@@ -125,12 +123,6 @@ private:
 
 
 private:
-
-    const float hAngIncrement;
-    const float vAngIncrement;
-
-    const int32 NumberOfHorizontalSteps;
-    const int32 NumberOfVerticalSteps;
 
 
     int32 CurrentStep;
