@@ -85,28 +85,18 @@ private:
 
     UPROPERTY(Transient)
         TArray <FPostProcessVolumeData> PPVolumeArray;
-
     UPROPERTY(Transient)
         USceneComponent* CaptureSceneComponent;
-
     TArray<USceneCaptureComponent2D*> LeftEyeCaptureComponents;
 
     TArray<ERenderPass> RenderPasses;
-
     int CurrentRenderPassIndex;
     ECaptureStep CaptureStep;
-
-    FString m_FileNamePrefix;
-
-
     bool bIsTicking;
     APlayerController* CapturePlayerController;
     AGameModeBase* CaptureGameMode;
+    FString m_FileNamePrefix;
 
 	FDateTime OverallStartTime;
 	FDateTime StartTime;
-
-	FString Timestamp;
-
-    const FString OutputDir;
 };

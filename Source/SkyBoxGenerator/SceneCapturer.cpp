@@ -38,7 +38,6 @@ USceneCapturer::USceneCapturer(FVTableHelper& Helper)
     , bIsTicking(false)
     , CapturePlayerController(NULL)
     , CaptureGameMode(NULL)
-    , OutputDir(TEXT("I:/UE4Workspace/png/mycapture"))
 {
     UE_LOG(LogTemp, Warning, TEXT("！！！！！USceneCapturer::USceneCapturer(FVTableHelper& Helper)"));
 }
@@ -49,13 +48,15 @@ USceneCapturer::USceneCapturer()
     , bIsTicking(false)
     , CapturePlayerController(NULL)
     , CaptureGameMode(NULL)
-    , OutputDir(TEXT("I:/UE4Workspace/png/mycapture"))
 {
     UE_LOG(LogTemp, Warning, TEXT("！！！！！USceneCapturer::USceneCapturer()"));
     FSystemResolution::RequestResolutionChange(CAPTURE_WIDTH, CAPTURE_HIGHT, EWindowMode::Windowed);
+
     CacheAllPostProcessVolumes();
+
 	CaptureSceneComponent = CreateDefaultSubobject<USceneComponent>(TEXT("CaptureSceneComponent"));
 	CaptureSceneComponent->AddToRoot();
+
 	for( int CaptureIndex = 0; CaptureIndex < CONCURRENT_CAPTURES; CaptureIndex++ )
 	{
 		FString LeftCounter = FString::Printf(TEXT("LeftEyeCaptureComponent_%04d"), CaptureIndex);
@@ -66,6 +67,7 @@ USceneCapturer::USceneCapturer()
 		InitCaptureComponent(LeftEyeCaptureComponent);
 		LeftEyeCaptureComponents.Add( LeftEyeCaptureComponent );
 	}
+
     RenderPasses.Add(ERenderPass::FinalColor);
     RenderPasses.Add(ERenderPass::SceneDepth);
     CurrentRenderPassIndex = 0;
@@ -117,9 +119,6 @@ bool USceneCapturer::StartCapture(FVector CapturePosition, FString FileNamePrefi
     bIsTicking = true;
     OverallStartTime = FDateTime::UtcNow();
     StartTime = OverallStartTime;
-
-    FDateTime Time = FDateTime::Now();
-    Timestamp = FString::Printf(TEXT("%s-%d"), *Time.ToString(), Time.GetMillisecond());
     return true;
 }
 
@@ -372,9 +371,7 @@ void USceneCapturer::CaptureScene(int32 CaptureIndex)
 
     if (OutputBitDepth == 8 && RenderPasses[CurrentRenderPassIndex] != ERenderPass::SceneDepth)
     {
-        FString TickString = FString::Printf(TEXT("_%05d_%04d_%04d"), 0, CaptureIndex, 0);
-        FString CaptureName = OutputDir / Timestamp / TickString + TEXT(".png");
-
+        FString FileName = FString::Printf(TEXT("%s-%s-%d.png"), *m_FileNamePrefix, *GetCurrentRenderPassName(), CaptureIndex);
         TArray<FColor> CombinedAtlas8bit;
         for (FLinearColor& Color : SurfaceData)
         {
@@ -384,18 +381,16 @@ void USceneCapturer::CaptureScene(int32 CaptureIndex)
         TSharedPtr<IImageWrapper> ImageWrapper = ImageWrapperModule.CreateImageWrapper(EImageFormat::PNG);
         ImageWrapper->SetRaw(CombinedAtlas8bit.GetData(), CombinedAtlas8bit.GetAllocatedSize(), TargetWidth, TargetHeight, ERGBFormat::BGRA, 8);
         const TArray64<uint8>& ImageData = ImageWrapper->GetCompressed(100);
-        FFileHelper::SaveArrayToFile(ImageData, *CaptureName);
+        FFileHelper::SaveArrayToFile(ImageData, *FileName);
         ImageWrapper.Reset();
     }
     else
     {
-        FString TickString = FString::Printf(TEXT("_%05d_%04d_%04d"), 0, CaptureIndex, 0);
-        FString CaptureName = OutputDir / Timestamp / TickString + TEXT(".exr");
-
+        FString FileName = FString::Printf(TEXT("%s-%s-%d.exr"), *m_FileNamePrefix, *GetCurrentRenderPassName(), CaptureIndex);
         TSharedPtr<IImageWrapper> ImageWrapper = ImageWrapperModule.CreateImageWrapper(EImageFormat::EXR);
         ImageWrapper->SetRaw(SurfaceData.GetData(), SurfaceData.GetAllocatedSize(), TargetWidth, TargetHeight, ERGBFormat::RGBA, 32);
         const TArray64<uint8>& ImageData = ImageWrapper->GetCompressed((int32)EImageCompressionQuality::Default);
-        FFileHelper::SaveArrayToFile(ImageData, *CaptureName);
+        FFileHelper::SaveArrayToFile(ImageData, *FileName);
         ImageWrapper.Reset();
     }
 }
