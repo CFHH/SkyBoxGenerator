@@ -115,7 +115,7 @@ bool USceneCapturer::StartCapture(FVector CapturePosition, FString FileNamePrefi
     }
     m_FileNamePrefix = FileNamePrefix;
     CurrentRenderPassIndex = 0;
-    CaptureStep = ECaptureStep::Unpause;
+    CaptureStep = ECaptureStep::Pause; //跳过Unpause
     bIsTicking = true;
     OverallStartTime = FDateTime::UtcNow();
     StartTime = OverallStartTime;
@@ -138,6 +138,7 @@ void USceneCapturer::Tick( float DeltaTime )
 
     if (CaptureStep == ECaptureStep::Unpause)
     {
+        //这个跳过
         FlushRenderingCommands();
         CaptureGameMode->ClearPause();
         //GPauseRenderingRealtimeClock = false;
@@ -168,21 +169,34 @@ void USceneCapturer::Tick( float DeltaTime )
         FVector Location;
         FRotator Rotation;
         CapturePlayerController->GetPlayerViewPoint(Location, Rotation);
-		CaptureSceneComponent->SetWorldLocationAndRotation(Location, FRotator(0.0f, 0.0f, 0.0f));
+        CaptureSceneComponent->SetWorldLocationAndRotation(Location, FRotator(0.0f, 0.0f, 0.0f));
 
-		for (int32 CaptureIndex = 0; CaptureIndex < CONCURRENT_CAPTURES; CaptureIndex++)
-			SetCaptureComponentRequirements(CaptureIndex);
+        for (int32 CaptureIndex = 0; CaptureIndex < CONCURRENT_CAPTURES; CaptureIndex++)
+            SetCaptureComponentRequirements(CaptureIndex);
 
-		if (RenderPasses[CurrentRenderPassIndex] != ERenderPass::FinalColor)
-			DisableAllPostProcessVolumes();
-		else
-			EnablePostProcessVolumes();
+        if (RenderPasses[CurrentRenderPassIndex] != ERenderPass::FinalColor)
+            DisableAllPostProcessVolumes();
+        else
+            EnablePostProcessVolumes();
 
-        CaptureStep = ECaptureStep::SetPosition;
+        //跳过SetPosition
+        LeftEyeCaptureComponents[0]->SetRelativeLocationAndRotation(FVector(0.0f, 0.0f, 0.0f), FRotator(0.0f, 0.0f, 0.0f));  //前
+        LeftEyeCaptureComponents[1]->SetRelativeLocationAndRotation(FVector(0.0f, 0.0f, 0.0f), FRotator(0.0f, 90.0f, 0.0f));  //右
+        LeftEyeCaptureComponents[2]->SetRelativeLocationAndRotation(FVector(0.0f, 0.0f, 0.0f), FRotator(0.0f, 180.0f, 0.0f));  //后
+        LeftEyeCaptureComponents[3]->SetRelativeLocationAndRotation(FVector(0.0f, 0.0f, 0.0f), FRotator(0.0f, -90.0f, 0.0f));  //左
+        LeftEyeCaptureComponents[4]->SetRelativeLocationAndRotation(FVector(0.0f, 0.0f, 0.0f), FRotator(90.0f, 0.0f, 0.0f));  //上
+        LeftEyeCaptureComponents[5]->SetRelativeLocationAndRotation(FVector(0.0f, 0.0f, 0.0f), FRotator(-90.0f, 0.0f, 0.0f));  //下
+        for (int32 CaptureIndex = 0; CaptureIndex < CONCURRENT_CAPTURES; CaptureIndex++)
+        {
+            LeftEyeCaptureComponents[CaptureIndex]->CaptureSceneDeferred(); //Render the scene to the texture the next time the main view is rendered
+        }
+
+        CaptureStep = ECaptureStep::Read;  //跳过SetPosition
         FlushRenderingCommands();
     }
     else if (CaptureStep == ECaptureStep::SetPosition)
     {
+        //合并到SetStartPosition
         FlushRenderingCommands();
         LeftEyeCaptureComponents[0]->SetRelativeLocationAndRotation(FVector(0.0f, 0.0f, 0.0f), FRotator(0.0f, 0.0f, 0.0f));  //前
         LeftEyeCaptureComponents[1]->SetRelativeLocationAndRotation(FVector(0.0f, 0.0f, 0.0f), FRotator(0.0f, 90.0f, 0.0f));  //右
@@ -216,25 +230,29 @@ void USceneCapturer::Tick( float DeltaTime )
         FTimespan Duration = EndTime - StartTime;
         UE_LOG(LogTemp, Warning, TEXT("！！！！！USceneCapturer::Tick(), pass %s completed, cost time %f seconds"), *GetCurrentRenderPassName(), Duration.GetTotalSeconds());
         StartTime = EndTime;
-    }
-    else
-	{
-		CurrentRenderPassIndex++;
-		if (CurrentRenderPassIndex < RenderPasses.Num())
+
+        //合并了Reset
+        CurrentRenderPassIndex++;
+        if (CurrentRenderPassIndex < RenderPasses.Num())
         {
-			CaptureStep = ECaptureStep::SetStartPosition;
-		}
-		else
+            CaptureStep = ECaptureStep::SetStartPosition;
+        }
+        else
         {
             CaptureGameMode->ClearPause();
             bIsTicking = false;
+            CaptureStep = ECaptureStep::Reset;
             EnablePostProcessVolumes();
 
             FTimespan OverallDuration = FDateTime::UtcNow() - OverallStartTime;
             UE_LOG(LogTemp, Warning, TEXT("！！！！！USceneCapturer::Tick(), finished, cost time %f seconds"), OverallDuration.GetTotalSeconds());
 
             m_OnSkyBoxCaptureDoneDelegate.Broadcast();
-		}
+        }
+    }
+    else
+	{
+        //合并到Read
 	}
 }
 
