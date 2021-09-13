@@ -26,8 +26,6 @@
 #include "MessageLog/Public/MessageLogModule.h"
 #include "Tickable.h"
 
-#define LOCTEXT_NAMESPACE "LogStereoPanorama"
-
 #define CAPTURE_WIDTH 1024
 #define CAPTURE_HIGHT 1024
 #define CAPTURE_FOV 120.0f
@@ -74,15 +72,6 @@ USceneCapturer::USceneCapturer()
     RenderPasses.Add(ERenderPass::SceneDepth);
     CurrentRenderPassIndex = 0;
     CaptureStep = ECaptureStep::Reset;
-
-    FMessageLogModule& MessageLogModule = FModuleManager::LoadModuleChecked<FMessageLogModule>("MessageLog");
-    FMessageLogInitializationOptions MessageLogOptions;
-    MessageLogOptions.bShowPages = true;
-    MessageLogOptions.bAllowClear = true;
-    MessageLogOptions.MaxPageCount = 10;
-    MessageLogModule.RegisterLogListing(StereoPanoramaLogName, LOCTEXT("StereoPanoramaLogLabel", "Panoramic Capture Log"));
-
-    FrameDescriptors = TEXT("FrameNumber, GameClock, TimeTaken(s)" LINE_TERMINATOR);
 }
 
 USceneCapturer::~USceneCapturer()
@@ -131,8 +120,8 @@ bool USceneCapturer::StartCapture(FVector CapturePosition, FString FileNamePrefi
     CaptureStep = ECaptureStep::Unpause;
     bIsTicking = true;
 
-    StartTime = FDateTime::UtcNow();
-    OverallStartTime = StartTime;
+    OverallStartTime = FDateTime::UtcNow();
+    StartTime = OverallStartTime;
 
     FDateTime Time = FDateTime::Now();
     Timestamp = FString::Printf(TEXT("%s-%d"), *Time.ToString(), Time.GetMillisecond());
@@ -180,18 +169,15 @@ void USceneCapturer::Tick( float DeltaTime )
 			});
         FlushRenderingCommands();
 
+        UE_LOG(LogTemp, Warning, TEXT("！！！！！！！！！！USkyBoxSceneCapturer::Tick(), Processing pass %s"), *GetCurrentRenderPassName());
+
         FVector Location;
         FRotator Rotation;
         CapturePlayerController->GetPlayerViewPoint(Location, Rotation);
 		CaptureSceneComponent->SetWorldLocationAndRotation(Location, FRotator(0.0f, 0.0f, 0.0f));
-        UE_LOG(LogTemp, Warning, TEXT("！！！！！！！！！！USceneCapturer::Tick(), SetStartPosition (%.1f，%.1f，%.1f)"), Location.X, Location.Y, Location.Z);
 
 		for (int32 CaptureIndex = 0; CaptureIndex < CONCURRENT_CAPTURES; CaptureIndex++)
 			SetCaptureComponentRequirements(CaptureIndex);
-
-		FString CurrentPassName = GetCurrentRenderPassName();
-		FString Msg = FString("Processing pass: " + CurrentPassName);
-		FMessageLog(StereoPanoramaLogName).Message(EMessageSeverity::Info, FText::FromString(Msg));
 
 		if (RenderPasses[CurrentRenderPassIndex] != ERenderPass::FinalColor)
 			DisableAllPostProcessVolumes();
@@ -231,53 +217,29 @@ void USceneCapturer::Tick( float DeltaTime )
         }
         CaptureStep = ECaptureStep::Reset;
         FlushRenderingCommands();
+
+        FDateTime EndTime = FDateTime::UtcNow();
+        FTimespan Duration = EndTime - StartTime;
+        UE_LOG(LogTemp, Warning, TEXT("！！！！！！！！！！USceneCapturer::Tick(), pass %s completed, cost time %f seconds"), *GetCurrentRenderPassName(), Duration.GetTotalSeconds());
+        StartTime = EndTime;
     }
     else
 	{
 		CurrentRenderPassIndex++;
 		if (CurrentRenderPassIndex < RenderPasses.Num())
         {
-            UE_LOG(LogTemp, Warning, TEXT("！！！！！！！！！！USceneCapturer::Tick(), NEXT RenderPass！！！！！！！！！！"));
 			CaptureStep = ECaptureStep::SetStartPosition;
 		}
 		else
         {
-            UE_LOG(LogTemp, Warning, TEXT("！！！！！！！！！！USceneCapturer::Tick(), FINISH！！！！！！！！！！"));
-			FDateTime EndTime = FDateTime::UtcNow();
-			FTimespan Duration = EndTime - StartTime;
-
-			FFormatNamedArguments Args;
-			Args.Add(TEXT("Duration"), Duration.GetTotalSeconds());
-			Args.Add(TEXT("CurrentFrameCount"), 0);
-			FMessageLog(StereoPanoramaLogName).Message(EMessageSeverity::Info, FText::Format(LOCTEXT("FrameDuration", "Duration: {Duration} seconds for frame {CurrentFrameCount}"), Args));
-
-			StartTime = EndTime;
-
-
-			// Construct log of saved atlases in csv format
-			FrameDescriptors += FString::Printf(TEXT("%d, %g, %g" LINE_TERMINATOR), 0, FApp::GetCurrentTime() - FApp::GetLastTime(), Duration.GetTotalSeconds());
-
-			// ----------------------------------------------------------------------------------------
-			// EXIT
-			CaptureGameMode->ClearPause();
-			//GPauseRenderingRealtimeClock = false;
-
-			FTimespan OverallDuration = FDateTime::UtcNow() - OverallStartTime;
-
-			FrameDescriptors += FString::Printf(TEXT("Duration: %g minutes for frame range [%d,%d] "), OverallDuration.GetTotalMinutes(), 0, 0);
-
-			FFormatNamedArguments ExitArgs;
-			ExitArgs.Add(TEXT("Duration"), OverallDuration.GetTotalMinutes());
-			ExitArgs.Add(TEXT("StartFrame"), 0);
-			ExitArgs.Add(TEXT("EndFrame"), 0);
-			FMessageLog(StereoPanoramaLogName).Message(EMessageSeverity::Info, FText::Format(LOCTEXT("CompleteDuration", "Duration: {Duration} minutes for frame range [{StartFrame},{EndFrame}] "), ExitArgs));
-
-			FString FrameDescriptorName = OutputDir / Timestamp / TEXT("Frames.txt");
-			FFileHelper::SaveStringToFile(FrameDescriptors, *FrameDescriptorName, FFileHelper::EEncodingOptions::ForceUTF8);
-
-			bIsTicking = false;
+            CaptureGameMode->ClearPause();
+            bIsTicking = false;
             EnablePostProcessVolumes();
-            m_OnSkyBoxCaptureDoneDelegate.Broadcast(); //FStereoPanoramaModule::Get()->Cleanup();
+
+            FTimespan OverallDuration = FDateTime::UtcNow() - OverallStartTime;
+            UE_LOG(LogTemp, Warning, TEXT("！！！！！！！！！！USceneCapturer::Tick(), finished, cost time %f seconds"), OverallDuration.GetTotalSeconds());
+
+            m_OnSkyBoxCaptureDoneDelegate.Broadcast();
 		}
 	}
 }
@@ -458,5 +420,3 @@ FString USceneCapturer::GetCurrentRenderPassName()
     }
     return RenderPassString;
 }
-
-#undef LOCTEXT_NAMESPACE

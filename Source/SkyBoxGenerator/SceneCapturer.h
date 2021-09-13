@@ -19,8 +19,6 @@ DECLARE_CYCLE_STAT( TEXT( "SampleSpherical" ), STAT_SPSampleSpherical, STATGROUP
 DECLARE_CYCLE_STAT( TEXT( "ReadStrip" ),       STAT_SPReadStrip,       STATGROUP_SP );
 DECLARE_CYCLE_STAT( TEXT( "FillAlpha" ),       STAT_SPFillAlpha,       STATGROUP_SP );
 
-const static FName StereoPanoramaLogName("LogStereoPanorama");
-
 USTRUCT()
 struct FPostProcessVolumeData
 {
@@ -122,5 +120,4 @@ private:
 	FString Timestamp;
 
     const FString OutputDir;
-	FString FrameDescriptors;
 };
