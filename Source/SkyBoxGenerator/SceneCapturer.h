@@ -58,73 +58,42 @@ DECLARE_MULTICAST_DELEGATE(FOnSkyBoxCaptureDone);
 
 
 UCLASS()
-class USceneCapturer 
-	: public UObject
-	, public FTickableGameObject
+class USceneCapturer : public UObject, public FTickableGameObject
 {
     GENERATED_BODY()
-
 public:
-
-    USceneCapturer();
-
-    //NOTE: ikrimae: Adding this ctor hack to fix the 4.8p2 problem with hot reload macros calling empty constructors
-    //               https://answers.unrealengine.com/questions/228042/48p2-compile-fails-on-class-with-non-default-const.html
+    static FOnSkyBoxCaptureDone& OnSkyBoxCaptureDone() { return m_OnSkyBoxCaptureDoneDelegate; }
     USceneCapturer(FVTableHelper& Helper);
+    USceneCapturer();
+    virtual ~USceneCapturer();
     
 public:
-
 	//~ FTickableGameObject interface
-
-	virtual void Tick( float DeltaTime ) override;
-
-	virtual ETickableTickType GetTickableTickType() const override
-	{ 
-		return ETickableTickType::Always; 
-	}
-
-	virtual bool IsTickableWhenPaused() const override
-	{
-		return bIsTicking;
-	}
-
-	virtual UWorld* GetTickableGameObjectWorld() const override;
-
-	virtual TStatId GetStatId() const override
-	{
-		RETURN_QUICK_DECLARE_CYCLE_STAT( USceneCapturer, STATGROUP_Tickables );
-	}
+    virtual ETickableTickType GetTickableTickType() const override { return ETickableTickType::Always; }
+    virtual bool IsTickableWhenPaused() const override { return bIsTicking; }
+    virtual TStatId GetStatId() const override { RETURN_QUICK_DECLARE_CYCLE_STAT(USkyBoxSceneCapturer, STATGROUP_Tickables); }
+    virtual UWorld* GetTickableGameObjectWorld() const override;
+    virtual void Tick(float DeltaTime) override;
 
 public:
-    void Initialize(int inCaptureWidth, int inCaptureHeight, float inCaptureFov) {}
-
-	void InitCaptureComponent( USceneCaptureComponent2D* CaptureComponent, float HFov, float VFov, EStereoscopicPass InStereoPass );
-
-	void CaptureComponent(int32 CurrentHorizontalStep, int32 CurrentVerticalStep, FString Folder, USceneCaptureComponent2D* CaptureComponent);
-
-
-
-	void SetPositionAndRotation( int32 CurrentHorizontalStep, int32 CurrentVerticalStep, int32 CaptureIndex );
-
-	void SetCaptureComponentRequirements( int32 CaptureIndex);
-
-	void DisableAllPostProcessVolumes();
-
-	void CacheAllPostProcessVolumes();
-
-	void EnablePostProcessVolumes();
-
-	void DisableUnsupportedPostProcesses(USceneCaptureComponent2D* CaptureComponent);
-
+    void Initialize(int inCaptureWidth, int inCaptureHeight, float inCaptureFov);
+    void Reset();
     bool StartCapture(FVector CapturePosition, FString FileNamePrefix);
-	void SetInitialState( int32 InStartFrame, int32 InEndFrame, FStereoCaptureDoneDelegate& InStereoCaptureDoneDelegate );
+    void SetInitialState(int32 InStartFrame, int32 InEndFrame, FStereoCaptureDoneDelegate& InStereoCaptureDoneDelegate);
 
-	FString GetCurrentRenderPassName();
+private:
+    void CacheAllPostProcessVolumes();
+    void DisableAllPostProcessVolumes();
+    void EnablePostProcessVolumes();
 
-	void Reset();
+    void InitCaptureComponent(USceneCaptureComponent2D* CaptureComponent, float HFov, float VFov, EStereoscopicPass InStereoPass);
+    void DisableUnsupportedPostProcesses(USceneCaptureComponent2D* CaptureComponent);
+    void SetCaptureComponentRequirements(int32 CaptureIndex);
+	void CaptureComponent(int32 CurrentHorizontalStep, int32 CurrentVerticalStep, FString Folder, USceneCaptureComponent2D* CaptureComponent);
+    FString GetCurrentRenderPassName();
 
-public:
-
+private:
+    static FOnSkyBoxCaptureDone m_OnSkyBoxCaptureDoneDelegate;
 	IImageWrapperModule& ImageWrapperModule;
 
 	bool bIsTicking;
@@ -154,17 +123,6 @@ public:
 	UPROPERTY(Transient)
 	USceneComponent* CaptureSceneComponent;
 
-	bool GetComponentSteps( int32 Step, int32& CurrentHorizontalStep, int32& CurrentVerticalStep )
-	{
-		if( Step < TotalSteps )
-		{
-			CurrentHorizontalStep = Step / NumberOfVerticalSteps;
-			CurrentVerticalStep = Step - ( CurrentHorizontalStep * NumberOfVerticalSteps );
-			return true;
-		}
-
-		return false;
-	}
 
 private:
 
@@ -187,8 +145,4 @@ private:
 	const bool bOutputFinalColor;
 
     FStereoCaptureDoneDelegate StereoCaptureDoneDelegate;
-
-public:
-    static FOnSkyBoxCaptureDone& OnSkyBoxCaptureDone() { return m_OnSkyBoxCaptureDoneDelegate; }
-    static FOnSkyBoxCaptureDone m_OnSkyBoxCaptureDoneDelegate;
 };

@@ -35,29 +35,6 @@
 FOnSkyBoxCaptureDone USceneCapturer::m_OnSkyBoxCaptureDoneDelegate;
 
 
-
-void USceneCapturer::InitCaptureComponent(USceneCaptureComponent2D* CaptureComponent, float HFov, float VFov, EStereoscopicPass InStereoPass)
-{
-	CaptureComponent->SetVisibility( true );
-	CaptureComponent->SetHiddenInGame( false );
-	CaptureComponent->CaptureStereoPass = InStereoPass;
-	CaptureComponent->FOVAngle = FMath::Max( HFov, VFov );
-	CaptureComponent->bCaptureEveryFrame = false;
-	CaptureComponent->bCaptureOnMovement = false;
-	CaptureComponent->CaptureSource = ESceneCaptureSource::SCS_FinalColorLDR;
-	DisableUnsupportedPostProcesses(CaptureComponent);
-
-	const FName TargetName = MakeUniqueObjectName(this, UTextureRenderTarget2D::StaticClass(), TEXT("SceneCaptureTextureTarget"));
-	CaptureComponent->TextureTarget = NewObject<UTextureRenderTarget2D>(this, TargetName);
-	CaptureComponent->TextureTarget->InitCustomFormat(CAPTURE_WIDTH, CAPTURE_HIGHT, PF_FloatRGBA, false);
-	CaptureComponent->TextureTarget->ClearColor = FLinearColor::Red;
-	CaptureComponent->TextureTarget->TargetGamma = 2.2f;
-	CaptureComponent->RegisterComponentWithWorld( GetWorld() ); //GWorld
-
-	// UE4 cannot serialize an array of subobject pointers, so add these objects to the root
-	CaptureComponent->AddToRoot();
-}
-
 USceneCapturer::USceneCapturer(FVTableHelper& Helper)
     : Super(Helper)
     , ImageWrapperModule(FModuleManager::LoadModuleChecked<IImageWrapperModule>(FName("ImageWrapper")))
@@ -160,163 +137,32 @@ USceneCapturer::USceneCapturer()
 	}
 }
 
-// Output current render pass name as string
-FString USceneCapturer::GetCurrentRenderPassName()
+USceneCapturer::~USceneCapturer()
 {
-	FString RenderPassString;
-	switch (RenderPasses[CurrentRenderPassIndex])
-	{
-		case ERenderPass::FinalColor: RenderPassString = "FinalColor"; break;
-		case ERenderPass::WorldNormal: RenderPassString = "WorldNormal"; break;
-		case ERenderPass::AO: RenderPassString = "AO"; break;
-		case ERenderPass::BaseColor: RenderPassString = "BaseColor"; break;
-		case ERenderPass::Metallic: RenderPassString = "Metallic"; break;
-		case ERenderPass::Roughness: RenderPassString = "Roughness"; break;
-		case ERenderPass::SceneDepth: RenderPassString = "SceneDepth"; break;
-		default: RenderPassString = ""; break;
-	}
-	return RenderPassString;
 }
 
-UWorld* USceneCapturer::GetTickableGameObjectWorld() const
+void USceneCapturer::Initialize(int CaptureWidth, int CaptureHeight, float CaptureFov)
 {
-	// Check SceneCapturer have CaptureComponents and parent scene component is not marked as pending kill.
-	if (LeftEyeCaptureComponents.Num() > 0 && !CaptureSceneComponent->IsPendingKill())
-	{
-		return CaptureSceneComponent->GetWorld();
-	}
-	return nullptr;
 }
 
 void USceneCapturer::Reset()
 {
-	bIsTicking = false;
-	// apply old states on PP volumes
-	EnablePostProcessVolumes();
+    bIsTicking = false;
+    // apply old states on PP volumes
+    EnablePostProcessVolumes();
 
-	for( int CaptureIndex = 0; CaptureIndex < CONCURRENT_CAPTURES; CaptureIndex++ )
-	{
-		USceneCaptureComponent2D* LeftEyeCaptureComponent = LeftEyeCaptureComponents[CaptureIndex];
+    for (int CaptureIndex = 0; CaptureIndex < CONCURRENT_CAPTURES; CaptureIndex++)
+    {
+        USceneCaptureComponent2D* LeftEyeCaptureComponent = LeftEyeCaptureComponents[CaptureIndex];
 
-		LeftEyeCaptureComponent->SetVisibility( false );
-		LeftEyeCaptureComponent->SetHiddenInGame( true );
-		// UE4 cannot serialize an array of subobject pointers, so work around the GC problems
-		LeftEyeCaptureComponent->RemoveFromRoot();
-	}
+        LeftEyeCaptureComponent->SetVisibility(false);
+        LeftEyeCaptureComponent->SetHiddenInGame(true);
+        // UE4 cannot serialize an array of subobject pointers, so work around the GC problems
+        LeftEyeCaptureComponent->RemoveFromRoot();
+    }
 
-	CaptureSceneComponent->RemoveFromRoot();
+    CaptureSceneComponent->RemoveFromRoot();
 }
-
-// Disable screen space post processes we cannot use while capturing
-void USceneCapturer::DisableUnsupportedPostProcesses(USceneCaptureComponent2D* CaptureComponent)
-{
-	CaptureComponent->PostProcessSettings.bOverride_GrainIntensity = true;
-	CaptureComponent->PostProcessSettings.GrainIntensity = 0.0f;
-	CaptureComponent->PostProcessSettings.bOverride_MotionBlurAmount = true;
-	CaptureComponent->PostProcessSettings.MotionBlurAmount = 0.0f;
-	CaptureComponent->PostProcessSettings.bOverride_ScreenSpaceReflectionIntensity = true;
-	CaptureComponent->PostProcessSettings.ScreenSpaceReflectionIntensity = 0.0f;
-	CaptureComponent->PostProcessSettings.bOverride_VignetteIntensity = true;
-	CaptureComponent->PostProcessSettings.VignetteIntensity = 0.0f;
-	CaptureComponent->PostProcessSettings.bOverride_LensFlareIntensity = true;
-	CaptureComponent->PostProcessSettings.LensFlareIntensity = 0.0f;
-}
-
-// Cache all PP volumes in scene and save current "enable" state
-void USceneCapturer::CacheAllPostProcessVolumes()
-{
-	TArray<AActor*> AllActors;
-	UGameplayStatics::GetAllActorsOfClass(GetWorld(), APostProcessVolume::StaticClass(), AllActors);
-	for (AActor* pp : AllActors)
-	{
-		APostProcessVolume * PPVolumeObject = CastChecked<APostProcessVolume>(pp);
-		FPostProcessVolumeData PPVolumeData;
-		PPVolumeData.Object = PPVolumeObject;
-		PPVolumeData.WasEnabled = PPVolumeObject->bEnabled;
-		PPVolumeArray.Add(PPVolumeData);
-	}
-}
-
-// Apply old state on PP volumes
-void USceneCapturer::EnablePostProcessVolumes()
-{
-	for (FPostProcessVolumeData &PPVolume : PPVolumeArray)
-	{
-		PPVolume.Object->bEnabled = PPVolume.WasEnabled;
-	}
-}
-
-// Disable all PP volumes in scene to make sure g-buffer passes work
-void USceneCapturer::DisableAllPostProcessVolumes()
-{
-	for (FPostProcessVolumeData &PPVolume : PPVolumeArray)
-	{
-		PPVolume.Object->bEnabled = false;
-	}
-}
-
-// setup capture component based on current render pass
-void USceneCapturer::SetCaptureComponentRequirements(int32 CaptureIndex)
-{
-	// FINAL COLOR
-	if (RenderPasses[CurrentRenderPassIndex] == ERenderPass::FinalColor)
-	{
-		LeftEyeCaptureComponents[CaptureIndex]->bCaptureEveryFrame = false;			// true will create bandings, false wont pick up blendables
-		LeftEyeCaptureComponents[CaptureIndex]->CaptureSource = ESceneCaptureSource::SCS_FinalColorLDR;
-
-		// Enable bCaptureEveryFrame ONLY when capture is in a PPVolume with blendables, to avoid bandings
-		FVector CameraPosition = CapturePlayerController->PlayerCameraManager->GetCameraLocation();
-		for (FPostProcessVolumeData &PPVolume : PPVolumeArray)
-		{
-			FBoxSphereBounds bounds = PPVolume.Object->GetBounds();
-			FBox BB = bounds.GetBox();
-			if (BB.IsInsideOrOn(CameraPosition))
-			{
-				//LeftEyeCaptureComponents[CaptureIndex]->PostProcessSettings.WeightedBlendables = ppvolume->Settings.WeightedBlendables;
-				if (PPVolume.Object->bEnabled && PPVolume.Object->Settings.WeightedBlendables.Array.Num() > 0)
-				{
-					LeftEyeCaptureComponents[CaptureIndex]->bCaptureEveryFrame = true;
-				}
-			}
-
-		}
-	}
-
-	// SCENE DEPTH
-	if (RenderPasses[CurrentRenderPassIndex] == ERenderPass::SceneDepth)
-	{
-		LeftEyeCaptureComponents[CaptureIndex]->bCaptureEveryFrame = false;
-		LeftEyeCaptureComponents[CaptureIndex]->CaptureSource = ESceneCaptureSource::SCS_DeviceDepth;
-	}
-
-	// All other passes
-	if (RenderPasses[CurrentRenderPassIndex] < ERenderPass::FinalColor)
-	{
-		LeftEyeCaptureComponents[CaptureIndex]->bCaptureEveryFrame = true;										// "true" for blendable to work
-		LeftEyeCaptureComponents[CaptureIndex]->CaptureSource = ESceneCaptureSource::SCS_FinalColorLDR;			// "SCS_FinalColorLDR" for blendable to work
-	}
-
-	DisableUnsupportedPostProcesses(LeftEyeCaptureComponents[CaptureIndex]);
-}
-
-
-void USceneCapturer::SetPositionAndRotation( int32 CurrentHorizontalStep, int32 CurrentVerticalStep, int32 CaptureIndex )
-{
-	// Using FRotator Rotation to hold local rotation.
-	FRotator Rotation = FRotator(90.0f - 1.0f * CurrentVerticalStep * vAngIncrement, 180.0f + CurrentHorizontalStep * hAngIncrement, 0);
-
-    Rotation = Rotation.Clamp();
-
-	FVector Offset( 0.0f, 0.0f, 0.0f );
-    Offset = Rotation.RotateVector(Offset);
-
-	// Applying local offsets.
-	// Rotation will be used as local rotation to make it regardless of World Rotation.
-	// Local location will be used to set eye offset.
-	LeftEyeCaptureComponents[CaptureIndex]->SetRelativeLocationAndRotation( -1.0f * Offset, Rotation );
-    LeftEyeCaptureComponents[CaptureIndex]->CaptureSceneDeferred(); //Render the scene to the texture the next time the main view is rendered
-}
-
 
 bool USceneCapturer::StartCapture(FVector CapturePosition, FString FileNamePrefix)
 {
@@ -325,117 +171,58 @@ bool USceneCapturer::StartCapture(FVector CapturePosition, FString FileNamePrefi
     return true;
 }
 
-void USceneCapturer::SetInitialState( int32 InStartFrame, int32 InEndFrame, FStereoCaptureDoneDelegate& InStereoCaptureDoneDelegate )
+void USceneCapturer::SetInitialState(int32 InStartFrame, int32 InEndFrame, FStereoCaptureDoneDelegate& InStereoCaptureDoneDelegate)
 {
-	if( bIsTicking )
-	{
-		FMessageLog(StereoPanoramaLogName).Message(EMessageSeverity::Warning, LOCTEXT("InitialStateWarning_AlreadyCapturing", "Already capturing a scene; concurrent captures are not allowed"));
-		return;
-	}
+    if (bIsTicking)
+    {
+        FMessageLog(StereoPanoramaLogName).Message(EMessageSeverity::Warning, LOCTEXT("InitialStateWarning_AlreadyCapturing", "Already capturing a scene; concurrent captures are not allowed"));
+        return;
+    }
 
-	CapturePlayerController = UGameplayStatics::GetPlayerController(GetWorld(), 0 ); //GWorld
-	CaptureGameMode = UGameplayStatics::GetGameMode(GetWorld()); //GWorld
+    CapturePlayerController = UGameplayStatics::GetPlayerController(GetWorld(), 0); //GWorld
+    CaptureGameMode = UGameplayStatics::GetGameMode(GetWorld()); //GWorld
 
-	if( CaptureGameMode == NULL || CapturePlayerController == NULL )
-	{
-		FMessageLog(StereoPanoramaLogName).Message(EMessageSeverity::Warning, LOCTEXT("InitialStateWarning_MissingGameModeOrPC", "Missing GameMode or PlayerController"));
-		return;
-	}
-
+    if (CaptureGameMode == NULL || CapturePlayerController == NULL)
+    {
+        FMessageLog(StereoPanoramaLogName).Message(EMessageSeverity::Warning, LOCTEXT("InitialStateWarning_MissingGameModeOrPC", "Missing GameMode or PlayerController"));
+        return;
+    }
 
     //TotalSteps = NumberOfHorizontalSteps * NumberOfVerticalSteps;
     TotalSteps = CONCURRENT_CAPTURES;
 
-	// Setup starting criteria
-    CurrentStep				= 0;
-    CaptureStep				= ECaptureStep::Unpause;
-	CurrentRenderPassIndex	= 0;
+    // Setup starting criteria
+    CurrentStep = 0;
+    CaptureStep = ECaptureStep::Unpause;
+    CurrentRenderPassIndex = 0;
 
     FDateTime Time = FDateTime::Now();
-	Timestamp = FString::Printf( TEXT( "%s-%d" ), *Time.ToString(), Time.GetMillisecond());
+    Timestamp = FString::Printf(TEXT("%s-%d"), *Time.ToString(), Time.GetMillisecond());
     UE_LOG(LogTemp, Warning, TEXT("！！！！！！！！！！Timestamp = %s"), *Timestamp);
 
-	//SetStartPosition();
+    //SetStartPosition();
 
-
-	StartTime        = FDateTime::UtcNow();
-	OverallStartTime = StartTime;
-	bIsTicking       = true;
+    StartTime = FDateTime::UtcNow();
+    OverallStartTime = StartTime;
+    bIsTicking = true;
 
     StereoCaptureDoneDelegate = InStereoCaptureDoneDelegate;
 
-	// open log on error
-	if (FMessageLog(StereoPanoramaLogName).NumMessages(EMessageSeverity::Error) > 0)
-	{
-		FMessageLog(StereoPanoramaLogName).Open();
-	}
-
+    // open log on error
+    if (FMessageLog(StereoPanoramaLogName).NumMessages(EMessageSeverity::Error) > 0)
+    {
+        FMessageLog(StereoPanoramaLogName).Open();
+    }
 }
 
-
-void USceneCapturer::CaptureComponent(int32 CurrentHorizontalStep, int32 CurrentVerticalStep, FString Folder, USceneCaptureComponent2D* CaptureComponent)
+UWorld* USceneCapturer::GetTickableGameObjectWorld() const
 {
-	TArray<FLinearColor> SurfaceData;
-
-    uint32 targetWidth = 0;
-    uint32 targetHeight = 0;
-
-	{
-		SCOPE_CYCLE_COUNTER(STAT_SPReadStrip);
-
-		FTextureRenderTargetResource* RenderTarget = CaptureComponent->TextureTarget->GameThread_GetRenderTargetResource();
-        targetWidth = RenderTarget->GetSizeX();
-        targetHeight = RenderTarget->GetSizeY();
-
-		FReadSurfaceDataFlags readSurfaceDataFlags = FReadSurfaceDataFlags();
-        RenderTarget->ReadLinearColorPixels(SurfaceData, readSurfaceDataFlags);
-	}
-
-	// SceneDepth pass only
-	if (RenderPasses[CurrentRenderPassIndex] == ERenderPass::SceneDepth)
-	{
-		// unpack 32bit scene depth from 4 channels RGBA
-		for (FLinearColor& Color : SurfaceData)
-		{
-			Color.R = 1.0f - (Color.R + (Color.G / 255.0f) + (Color.B / 65025.0f) + (Color.A / 16581375.0f));	// unpack depth
-			Color.R = FMath::Pow(Color.R, 0.4545f);																// linear to srgb
-			Color.G = Color.R;
-			Color.B = Color.R;
-			Color.A = 1.0f;
-		}
-	}
-
-    if (OutputBitDepth == 8 && RenderPasses[CurrentRenderPassIndex] != ERenderPass::SceneDepth)
+    // Check SceneCapturer have CaptureComponents and parent scene component is not marked as pending kill.
+    if (LeftEyeCaptureComponents.Num() > 0 && !CaptureSceneComponent->IsPendingKill())
     {
-        TArray<FColor> CombinedAtlas8bit;
-        for (FLinearColor& Color : SurfaceData)
-        {
-            FColor t = Color.Quantize();
-            CombinedAtlas8bit.Add(t);
-        }
-
-        FString TickString = FString::Printf(TEXT("_%05d_%04d_%04d"), 0, CurrentHorizontalStep, CurrentVerticalStep);
-        FString CaptureName = OutputDir / Timestamp / Folder / TickString + TEXT(".png");
-
-        // write
-        TSharedPtr<IImageWrapper> ImageWrapper = ImageWrapperModule.CreateImageWrapper(EImageFormat::PNG);
-        ImageWrapper->SetRaw(CombinedAtlas8bit.GetData(), CombinedAtlas8bit.GetAllocatedSize(), targetWidth, targetHeight, ERGBFormat::BGRA, 8);
-        const TArray64<uint8>& ImageData = ImageWrapper->GetCompressed(100);
-        FFileHelper::SaveArrayToFile(ImageData, *CaptureName);
-        ImageWrapper.Reset();
+        return CaptureSceneComponent->GetWorld();
     }
-    else
-    {
-        FString TickString = FString::Printf(TEXT("_%05d_%04d_%04d"), 0, CurrentHorizontalStep, CurrentVerticalStep);
-        FString CaptureName = OutputDir / Timestamp / Folder / TickString + TEXT(".exr");
-
-        // write
-        TSharedPtr<IImageWrapper> ImageWrapper = ImageWrapperModule.CreateImageWrapper(EImageFormat::EXR);
-        ImageWrapper->SetRaw(SurfaceData.GetData(), SurfaceData.GetAllocatedSize(), targetWidth, targetHeight, ERGBFormat::RGBA, 32);
-        const TArray64<uint8>& ImageData = ImageWrapper->GetCompressed((int32)EImageCompressionQuality::Default);
-        FFileHelper::SaveArrayToFile(ImageData, *CaptureName);
-        ImageWrapper.Reset();
-    }
+    return nullptr;
 }
 
 
@@ -520,15 +307,6 @@ void USceneCapturer::Tick( float DeltaTime )
         else if (CaptureStep == ECaptureStep::SetPosition)
         {
             FlushRenderingCommands();
-     //       for (int32 CaptureIndex = 0; CaptureIndex < CONCURRENT_CAPTURES; CaptureIndex++)
-     //       {
-     //           int32 CurrentHorizontalStep;
-     //           int32 CurrentVerticalStep;
-     //           if (GetComponentSteps(CurrentStep + CaptureIndex, CurrentHorizontalStep, CurrentVerticalStep))
-     //           {
-					//SetPositionAndRotation(CurrentHorizontalStep, CurrentVerticalStep, CaptureIndex);
-     //           }
-     //       }
             LeftEyeCaptureComponents[0]->SetRelativeLocationAndRotation(FVector(0.0f, 0.0f, 0.0f), FRotator(0.0f, 0.0f, 0.0f));  //前
             LeftEyeCaptureComponents[1]->SetRelativeLocationAndRotation(FVector(0.0f, 0.0f, 0.0f), FRotator(0.0f, 90.0f, 0.0f));  //右
             LeftEyeCaptureComponents[2]->SetRelativeLocationAndRotation(FVector(0.0f, 0.0f, 0.0f), FRotator(0.0f, 180.0f, 0.0f));  //后
@@ -546,16 +324,6 @@ void USceneCapturer::Tick( float DeltaTime )
 		else if (CaptureStep == ECaptureStep::Read)
 		{
             FlushRenderingCommands();
-    //        for (int32 CaptureIndex = 0; CaptureIndex < CONCURRENT_CAPTURES; CaptureIndex++)
-    //        {
-    //            int32 CurrentHorizontalStep;
-    //            int32 CurrentVerticalStep;
-				//if (GetComponentSteps(CurrentStep, CurrentHorizontalStep, CurrentVerticalStep))
-				//{
-				//	CaptureComponent(CurrentHorizontalStep, CurrentVerticalStep, TEXT("Left"), LeftEyeCaptureComponents[CaptureIndex]);
-				//	CurrentStep++;
-    //            }
-    //        }
             for (int32 CaptureIndex = 0; CaptureIndex < CONCURRENT_CAPTURES; CaptureIndex++)
             {
                 CaptureComponent(CaptureIndex, 0, TEXT("Left"), LeftEyeCaptureComponents[CaptureIndex]);
@@ -635,6 +403,206 @@ void USceneCapturer::Tick( float DeltaTime )
 			}
 		}
 	}  // end 也就是CurrentStep >= TotalSteps
+}
+
+/**********************************************************************************************************************/
+//帮助函数
+/**********************************************************************************************************************/
+// Cache all PP volumes in scene and save current "enable" state
+void USceneCapturer::CacheAllPostProcessVolumes()
+{
+    TArray<AActor*> AllActors;
+    UGameplayStatics::GetAllActorsOfClass(GetWorld(), APostProcessVolume::StaticClass(), AllActors);
+    for (AActor* pp : AllActors)
+    {
+        APostProcessVolume * PPVolumeObject = CastChecked<APostProcessVolume>(pp);
+        FPostProcessVolumeData PPVolumeData;
+        PPVolumeData.Object = PPVolumeObject;
+        PPVolumeData.WasEnabled = PPVolumeObject->bEnabled;
+        PPVolumeArray.Add(PPVolumeData);
+    }
+}
+
+// Apply old state on PP volumes
+void USceneCapturer::EnablePostProcessVolumes()
+{
+    for (FPostProcessVolumeData &PPVolume : PPVolumeArray)
+    {
+        PPVolume.Object->bEnabled = PPVolume.WasEnabled;
+    }
+}
+
+// Disable all PP volumes in scene to make sure g-buffer passes work
+void USceneCapturer::DisableAllPostProcessVolumes()
+{
+    for (FPostProcessVolumeData &PPVolume : PPVolumeArray)
+    {
+        PPVolume.Object->bEnabled = false;
+    }
+}
+
+void USceneCapturer::InitCaptureComponent(USceneCaptureComponent2D* CaptureComponent, float HFov, float VFov, EStereoscopicPass InStereoPass)
+{
+    CaptureComponent->SetVisibility(true);
+    CaptureComponent->SetHiddenInGame(false);
+    CaptureComponent->CaptureStereoPass = InStereoPass;
+    CaptureComponent->FOVAngle = FMath::Max(HFov, VFov);
+    CaptureComponent->bCaptureEveryFrame = false;
+    CaptureComponent->bCaptureOnMovement = false;
+    CaptureComponent->CaptureSource = ESceneCaptureSource::SCS_FinalColorLDR;
+    DisableUnsupportedPostProcesses(CaptureComponent);
+
+    const FName TargetName = MakeUniqueObjectName(this, UTextureRenderTarget2D::StaticClass(), TEXT("SceneCaptureTextureTarget"));
+    CaptureComponent->TextureTarget = NewObject<UTextureRenderTarget2D>(this, TargetName);
+    CaptureComponent->TextureTarget->InitCustomFormat(CAPTURE_WIDTH, CAPTURE_HIGHT, PF_FloatRGBA, false);
+    CaptureComponent->TextureTarget->ClearColor = FLinearColor::Red;
+    CaptureComponent->TextureTarget->TargetGamma = 2.2f;
+    CaptureComponent->RegisterComponentWithWorld(GetWorld()); //GWorld
+
+    // UE4 cannot serialize an array of subobject pointers, so add these objects to the root
+    CaptureComponent->AddToRoot();
+}
+
+// Disable screen space post processes we cannot use while capturing
+void USceneCapturer::DisableUnsupportedPostProcesses(USceneCaptureComponent2D* CaptureComponent)
+{
+    CaptureComponent->PostProcessSettings.bOverride_GrainIntensity = true;
+    CaptureComponent->PostProcessSettings.GrainIntensity = 0.0f;
+    CaptureComponent->PostProcessSettings.bOverride_MotionBlurAmount = true;
+    CaptureComponent->PostProcessSettings.MotionBlurAmount = 0.0f;
+    CaptureComponent->PostProcessSettings.bOverride_ScreenSpaceReflectionIntensity = true;
+    CaptureComponent->PostProcessSettings.ScreenSpaceReflectionIntensity = 0.0f;
+    CaptureComponent->PostProcessSettings.bOverride_VignetteIntensity = true;
+    CaptureComponent->PostProcessSettings.VignetteIntensity = 0.0f;
+    CaptureComponent->PostProcessSettings.bOverride_LensFlareIntensity = true;
+    CaptureComponent->PostProcessSettings.LensFlareIntensity = 0.0f;
+}
+
+// setup capture component based on current render pass
+void USceneCapturer::SetCaptureComponentRequirements(int32 CaptureIndex)
+{
+    // FINAL COLOR
+    if (RenderPasses[CurrentRenderPassIndex] == ERenderPass::FinalColor)
+    {
+        LeftEyeCaptureComponents[CaptureIndex]->bCaptureEveryFrame = false;			// true will create bandings, false wont pick up blendables
+        LeftEyeCaptureComponents[CaptureIndex]->CaptureSource = ESceneCaptureSource::SCS_FinalColorLDR;
+
+        // Enable bCaptureEveryFrame ONLY when capture is in a PPVolume with blendables, to avoid bandings
+        FVector CameraPosition = CapturePlayerController->PlayerCameraManager->GetCameraLocation();
+        for (FPostProcessVolumeData &PPVolume : PPVolumeArray)
+        {
+            FBoxSphereBounds bounds = PPVolume.Object->GetBounds();
+            FBox BB = bounds.GetBox();
+            if (BB.IsInsideOrOn(CameraPosition))
+            {
+                //LeftEyeCaptureComponents[CaptureIndex]->PostProcessSettings.WeightedBlendables = ppvolume->Settings.WeightedBlendables;
+                if (PPVolume.Object->bEnabled && PPVolume.Object->Settings.WeightedBlendables.Array.Num() > 0)
+                {
+                    LeftEyeCaptureComponents[CaptureIndex]->bCaptureEveryFrame = true;
+                }
+            }
+
+        }
+    }
+
+    // SCENE DEPTH
+    if (RenderPasses[CurrentRenderPassIndex] == ERenderPass::SceneDepth)
+    {
+        LeftEyeCaptureComponents[CaptureIndex]->bCaptureEveryFrame = false;
+        LeftEyeCaptureComponents[CaptureIndex]->CaptureSource = ESceneCaptureSource::SCS_DeviceDepth;
+    }
+
+    // All other passes
+    if (RenderPasses[CurrentRenderPassIndex] < ERenderPass::FinalColor)
+    {
+        LeftEyeCaptureComponents[CaptureIndex]->bCaptureEveryFrame = true;										// "true" for blendable to work
+        LeftEyeCaptureComponents[CaptureIndex]->CaptureSource = ESceneCaptureSource::SCS_FinalColorLDR;			// "SCS_FinalColorLDR" for blendable to work
+    }
+
+    DisableUnsupportedPostProcesses(LeftEyeCaptureComponents[CaptureIndex]);
+}
+
+void USceneCapturer::CaptureComponent(int32 CurrentHorizontalStep, int32 CurrentVerticalStep, FString Folder, USceneCaptureComponent2D* CaptureComponent)
+{
+    TArray<FLinearColor> SurfaceData;
+
+    uint32 targetWidth = 0;
+    uint32 targetHeight = 0;
+
+    {
+        SCOPE_CYCLE_COUNTER(STAT_SPReadStrip);
+
+        FTextureRenderTargetResource* RenderTarget = CaptureComponent->TextureTarget->GameThread_GetRenderTargetResource();
+        targetWidth = RenderTarget->GetSizeX();
+        targetHeight = RenderTarget->GetSizeY();
+
+        FReadSurfaceDataFlags readSurfaceDataFlags = FReadSurfaceDataFlags();
+        RenderTarget->ReadLinearColorPixels(SurfaceData, readSurfaceDataFlags);
+    }
+
+    // SceneDepth pass only
+    if (RenderPasses[CurrentRenderPassIndex] == ERenderPass::SceneDepth)
+    {
+        // unpack 32bit scene depth from 4 channels RGBA
+        for (FLinearColor& Color : SurfaceData)
+        {
+            Color.R = 1.0f - (Color.R + (Color.G / 255.0f) + (Color.B / 65025.0f) + (Color.A / 16581375.0f));	// unpack depth
+            Color.R = FMath::Pow(Color.R, 0.4545f);																// linear to srgb
+            Color.G = Color.R;
+            Color.B = Color.R;
+            Color.A = 1.0f;
+        }
+    }
+
+    if (OutputBitDepth == 8 && RenderPasses[CurrentRenderPassIndex] != ERenderPass::SceneDepth)
+    {
+        TArray<FColor> CombinedAtlas8bit;
+        for (FLinearColor& Color : SurfaceData)
+        {
+            FColor t = Color.Quantize();
+            CombinedAtlas8bit.Add(t);
+        }
+
+        FString TickString = FString::Printf(TEXT("_%05d_%04d_%04d"), 0, CurrentHorizontalStep, CurrentVerticalStep);
+        FString CaptureName = OutputDir / Timestamp / Folder / TickString + TEXT(".png");
+
+        // write
+        TSharedPtr<IImageWrapper> ImageWrapper = ImageWrapperModule.CreateImageWrapper(EImageFormat::PNG);
+        ImageWrapper->SetRaw(CombinedAtlas8bit.GetData(), CombinedAtlas8bit.GetAllocatedSize(), targetWidth, targetHeight, ERGBFormat::BGRA, 8);
+        const TArray64<uint8>& ImageData = ImageWrapper->GetCompressed(100);
+        FFileHelper::SaveArrayToFile(ImageData, *CaptureName);
+        ImageWrapper.Reset();
+    }
+    else
+    {
+        FString TickString = FString::Printf(TEXT("_%05d_%04d_%04d"), 0, CurrentHorizontalStep, CurrentVerticalStep);
+        FString CaptureName = OutputDir / Timestamp / Folder / TickString + TEXT(".exr");
+
+        // write
+        TSharedPtr<IImageWrapper> ImageWrapper = ImageWrapperModule.CreateImageWrapper(EImageFormat::EXR);
+        ImageWrapper->SetRaw(SurfaceData.GetData(), SurfaceData.GetAllocatedSize(), targetWidth, targetHeight, ERGBFormat::RGBA, 32);
+        const TArray64<uint8>& ImageData = ImageWrapper->GetCompressed((int32)EImageCompressionQuality::Default);
+        FFileHelper::SaveArrayToFile(ImageData, *CaptureName);
+        ImageWrapper.Reset();
+    }
+}
+
+// Output current render pass name as string
+FString USceneCapturer::GetCurrentRenderPassName()
+{
+    FString RenderPassString;
+    switch (RenderPasses[CurrentRenderPassIndex])
+    {
+    case ERenderPass::FinalColor: RenderPassString = "FinalColor"; break;
+    case ERenderPass::WorldNormal: RenderPassString = "WorldNormal"; break;
+    case ERenderPass::AO: RenderPassString = "AO"; break;
+    case ERenderPass::BaseColor: RenderPassString = "BaseColor"; break;
+    case ERenderPass::Metallic: RenderPassString = "Metallic"; break;
+    case ERenderPass::Roughness: RenderPassString = "Roughness"; break;
+    case ERenderPass::SceneDepth: RenderPassString = "SceneDepth"; break;
+    default: RenderPassString = ""; break;
+    }
+    return RenderPassString;
 }
 
 #undef LOCTEXT_NAMESPACE
