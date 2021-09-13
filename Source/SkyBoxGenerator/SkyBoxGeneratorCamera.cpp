@@ -177,8 +177,6 @@ void ASkyBoxGeneratorCamera::Tick(float DeltaTime)
                 CAPTURE_WIDTH, CAPTURE_HIGHT, m_current_job->m_position.scene_id, m_current_job->m_position.x, m_current_job->m_position.y, m_current_job->m_position.z);
             UE_LOG(LogTemp, Warning, TEXT("！！！！！！！！！！call StartCapture，WORLD = %d"), GetWorld());
             m_SceneCapturerObject->StartCapture(capture_position, file_name_prefix);
-            //FStereoCaptureDoneDelegate EmptyDelegate;
-            //m_SceneCapturerObject->SetInitialState(0, 0, EmptyDelegate);
         }
         else
         {

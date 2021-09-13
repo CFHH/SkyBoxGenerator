@@ -1,23 +1,13 @@
 #pragma once
-
 #include "CoreMinimal.h"
 #include "Materials/Material.h"
 #include "Tickable.h"
 #include "Components/SceneCaptureComponent2D.h"
 #include "Engine/PostProcessVolume.h"
-#include "Logging/MessageLog.h"
 #include "SceneCapturer.generated.h"
 
+
 class IImageWrapperModule;
-
-DECLARE_LOG_CATEGORY_EXTERN( LogStereoPanorama, Log, All );
-
-DECLARE_STATS_GROUP( TEXT( "SP" ), STATGROUP_SP, STATCAT_Advanced );
-
-DECLARE_CYCLE_STAT( TEXT( "SavePNG" ),         STAT_SPSavePNG,         STATGROUP_SP );
-DECLARE_CYCLE_STAT( TEXT( "SampleSpherical" ), STAT_SPSampleSpherical, STATGROUP_SP );
-DECLARE_CYCLE_STAT( TEXT( "ReadStrip" ),       STAT_SPReadStrip,       STATGROUP_SP );
-DECLARE_CYCLE_STAT( TEXT( "FillAlpha" ),       STAT_SPFillAlpha,       STATGROUP_SP );
 
 USTRUCT()
 struct FPostProcessVolumeData
@@ -51,7 +41,6 @@ enum class ERenderPass : uint8
 	SceneDepth
 };
 
-DECLARE_DELEGATE_TwoParams(FStereoCaptureDoneDelegate, const TArray<FLinearColor>&, const TArray<FLinearColor>&);
 DECLARE_MULTICAST_DELEGATE(FOnSkyBoxCaptureDone);
 
 
@@ -86,7 +75,7 @@ private:
     void InitCaptureComponent(USceneCaptureComponent2D* CaptureComponent);
     void DisableUnsupportedPostProcesses(USceneCaptureComponent2D* CaptureComponent);
     void SetCaptureComponentRequirements(int32 CaptureIndex);
-	void CaptureScene(int32 CurrentHorizontalStep, int32 CurrentVerticalStep, FString Folder, USceneCaptureComponent2D* CaptureComponent);
+	void CaptureScene(int32 CaptureIndex);
     FString GetCurrentRenderPassName();
 
 private:

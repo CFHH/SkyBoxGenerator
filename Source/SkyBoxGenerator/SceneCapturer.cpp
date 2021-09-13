@@ -1,37 +1,35 @@
 #include "SceneCapturer.h"
+#include "Components/SceneCaptureComponent2D.h"
+#include "Engine/BlendableInterface.h"
+#include "Engine/LatentActionManager.h"
 #include "Engine/TextureRenderTarget2D.h"
 #include "Engine/World.h"
-#include "IImageWrapper.h"
-#include "IImageWrapperModule.h"
-#include "Modules/ModuleManager.h"
-#include "Misc/Paths.h"
-#include "UnrealEngine.h"
-#include "Kismet/GameplayStatics.h"
-#include "Misc/FileHelper.h"
-#include "Misc/App.h"
+#include "EngineUtils.h"
 #include "GameFramework/Actor.h"
 #include "GameFramework/DefaultPawn.h"
 #include "GameFramework/GameModeBase.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
-#include "TextureResource.h"
-#include "Engine/BlendableInterface.h"
+#include "IImageWrapper.h"
+#include "IImageWrapperModule.h"
 #include "ImageUtils.h"
-#include "CoreMinimal.h"
-#include "UObject/ConstructorHelpers.h"
-#include "EngineUtils.h"
-#include "CoreMinimal.h"
+#include "Kismet/GameplayStatics.h"
 #include "LatentActions.h"
-#include "Engine/LatentActionManager.h"
-#include "MessageLog/Public/MessageLogModule.h"
-#include "Tickable.h"
+#include "Misc/App.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
+#include "Modules/ModuleManager.h"
+#include "TextureResource.h"
+#include "UnrealEngine.h"
+#include "UObject/ConstructorHelpers.h"
+
 
 #define CAPTURE_WIDTH 1024
 #define CAPTURE_HIGHT 1024
 #define CAPTURE_FOV 120.0f
 #define CONCURRENT_CAPTURES 6
-
 FOnSkyBoxCaptureDone USceneCapturer::m_OnSkyBoxCaptureDoneDelegate;
+
 
 USceneCapturer::USceneCapturer(FVTableHelper& Helper)
     : Super(Helper)
@@ -42,7 +40,7 @@ USceneCapturer::USceneCapturer(FVTableHelper& Helper)
     , CaptureGameMode(NULL)
     , OutputDir(TEXT("I:/UE4Workspace/png/mycapture"))
 {
-    UE_LOG(LogTemp, Warning, TEXT("！！！！！！！！！！USceneCapturer::USceneCapturer(FVTableHelper& Helper)"));
+    UE_LOG(LogTemp, Warning, TEXT("！！！！！USceneCapturer::USceneCapturer(FVTableHelper& Helper)"));
 }
 
 USceneCapturer::USceneCapturer()
@@ -53,7 +51,7 @@ USceneCapturer::USceneCapturer()
     , CaptureGameMode(NULL)
     , OutputDir(TEXT("I:/UE4Workspace/png/mycapture"))
 {
-    UE_LOG(LogTemp, Warning, TEXT("！！！！！！！！！！USceneCapturer::USceneCapturer()"));
+    UE_LOG(LogTemp, Warning, TEXT("！！！！！USceneCapturer::USceneCapturer()"));
     FSystemResolution::RequestResolutionChange(CAPTURE_WIDTH, CAPTURE_HIGHT, EWindowMode::Windowed);
     CacheAllPostProcessVolumes();
 	CaptureSceneComponent = CreateDefaultSubobject<USceneComponent>(TEXT("CaptureSceneComponent"));
@@ -76,7 +74,7 @@ USceneCapturer::USceneCapturer()
 
 USceneCapturer::~USceneCapturer()
 {
-    UE_LOG(LogTemp, Warning, TEXT("！！！！！！！！！！USceneCapturer::~USceneCapturer()"));
+    UE_LOG(LogTemp, Warning, TEXT("！！！！！USceneCapturer::~USceneCapturer()"));
 }
 
 void USceneCapturer::Initialize(int CaptureWidth, int CaptureHeight, float CaptureFov)
@@ -85,7 +83,7 @@ void USceneCapturer::Initialize(int CaptureWidth, int CaptureHeight, float Captu
 
 void USceneCapturer::Reset()
 {
-    UE_LOG(LogTemp, Warning, TEXT("！！！！！！！！！！USceneCapturer::Reset()"));
+    UE_LOG(LogTemp, Warning, TEXT("！！！！！USceneCapturer::Reset()"));
     bIsTicking = false;
     EnablePostProcessVolumes();
     for (int CaptureIndex = 0; CaptureIndex < CONCURRENT_CAPTURES; CaptureIndex++)
@@ -100,26 +98,23 @@ void USceneCapturer::Reset()
 
 bool USceneCapturer::StartCapture(FVector CapturePosition, FString FileNamePrefix)
 {
-    UE_LOG(LogTemp, Warning, TEXT("！！！！！！！！！！USceneCapturer::StartCapture()"));
+    UE_LOG(LogTemp, Warning, TEXT("！！！！！USceneCapturer::StartCapture()"));
     if (bIsTicking)
     {
-        UE_LOG(LogTemp, Warning, TEXT("！！！！！！！！！！USceneCapturer::StartCapture(), Already capturing a scene; concurrent captures are not allowed")); 
+        UE_LOG(LogTemp, Warning, TEXT("！！！！！USceneCapturer::StartCapture(), Already capturing a scene; concurrent captures are not allowed")); 
         return false;
     }
-
     CapturePlayerController = UGameplayStatics::GetPlayerController(GetWorld(), 0);
     CaptureGameMode = UGameplayStatics::GetGameMode(GetWorld());
     if (CaptureGameMode == NULL || CapturePlayerController == NULL)
     {
-        UE_LOG(LogTemp, Warning, TEXT("！！！！！！！！！！USceneCapturer::StartCapture(), Missing PlayerController or GameMode"));
+        UE_LOG(LogTemp, Warning, TEXT("！！！！！USceneCapturer::StartCapture(), Missing PlayerController or GameMode"));
         return false;
     }
-
     m_FileNamePrefix = FileNamePrefix;
     CurrentRenderPassIndex = 0;
     CaptureStep = ECaptureStep::Unpause;
     bIsTicking = true;
-
     OverallStartTime = FDateTime::UtcNow();
     StartTime = OverallStartTime;
 
@@ -169,7 +164,7 @@ void USceneCapturer::Tick( float DeltaTime )
 			});
         FlushRenderingCommands();
 
-        UE_LOG(LogTemp, Warning, TEXT("！！！！！！！！！！USkyBoxSceneCapturer::Tick(), Processing pass %s"), *GetCurrentRenderPassName());
+        UE_LOG(LogTemp, Warning, TEXT("！！！！！USkyBoxSceneCapturer::Tick(), Processing pass %s"), *GetCurrentRenderPassName());
 
         FVector Location;
         FRotator Rotation;
@@ -208,7 +203,7 @@ void USceneCapturer::Tick( float DeltaTime )
         FlushRenderingCommands();
         for (int32 CaptureIndex = 0; CaptureIndex < CONCURRENT_CAPTURES; CaptureIndex++)
         {
-            CaptureScene(CaptureIndex, 0, TEXT("Left"), LeftEyeCaptureComponents[CaptureIndex]);
+            CaptureScene(CaptureIndex);
         }
         for (int32 CaptureIndex = 0; CaptureIndex < CONCURRENT_CAPTURES; CaptureIndex++)
         {
@@ -220,7 +215,7 @@ void USceneCapturer::Tick( float DeltaTime )
 
         FDateTime EndTime = FDateTime::UtcNow();
         FTimespan Duration = EndTime - StartTime;
-        UE_LOG(LogTemp, Warning, TEXT("！！！！！！！！！！USceneCapturer::Tick(), pass %s completed, cost time %f seconds"), *GetCurrentRenderPassName(), Duration.GetTotalSeconds());
+        UE_LOG(LogTemp, Warning, TEXT("！！！！！USceneCapturer::Tick(), pass %s completed, cost time %f seconds"), *GetCurrentRenderPassName(), Duration.GetTotalSeconds());
         StartTime = EndTime;
     }
     else
@@ -237,7 +232,7 @@ void USceneCapturer::Tick( float DeltaTime )
             EnablePostProcessVolumes();
 
             FTimespan OverallDuration = FDateTime::UtcNow() - OverallStartTime;
-            UE_LOG(LogTemp, Warning, TEXT("！！！！！！！！！！USceneCapturer::Tick(), finished, cost time %f seconds"), OverallDuration.GetTotalSeconds());
+            UE_LOG(LogTemp, Warning, TEXT("！！！！！USceneCapturer::Tick(), finished, cost time %f seconds"), OverallDuration.GetTotalSeconds());
 
             m_OnSkyBoxCaptureDoneDelegate.Broadcast();
 		}
@@ -351,8 +346,9 @@ void USceneCapturer::SetCaptureComponentRequirements(int32 CaptureIndex)
     DisableUnsupportedPostProcesses(LeftEyeCaptureComponents[CaptureIndex]);
 }
 
-void USceneCapturer::CaptureScene(int32 CurrentHorizontalStep, int32 CurrentVerticalStep, FString Folder, USceneCaptureComponent2D* CaptureComponent)
+void USceneCapturer::CaptureScene(int32 CaptureIndex)
 {
+    USceneCaptureComponent2D* CaptureComponent = LeftEyeCaptureComponents[CaptureIndex];
     FTextureRenderTargetResource* RenderTarget = CaptureComponent->TextureTarget->GameThread_GetRenderTargetResource();
     uint32 TargetWidth = RenderTarget->GetSizeX();
     uint32 TargetHeight = RenderTarget->GetSizeY();
@@ -376,8 +372,8 @@ void USceneCapturer::CaptureScene(int32 CurrentHorizontalStep, int32 CurrentVert
 
     if (OutputBitDepth == 8 && RenderPasses[CurrentRenderPassIndex] != ERenderPass::SceneDepth)
     {
-        FString TickString = FString::Printf(TEXT("_%05d_%04d_%04d"), 0, CurrentHorizontalStep, CurrentVerticalStep);
-        FString CaptureName = OutputDir / Timestamp / Folder / TickString + TEXT(".png");
+        FString TickString = FString::Printf(TEXT("_%05d_%04d_%04d"), 0, CaptureIndex, 0);
+        FString CaptureName = OutputDir / Timestamp / TickString + TEXT(".png");
 
         TArray<FColor> CombinedAtlas8bit;
         for (FLinearColor& Color : SurfaceData)
@@ -393,8 +389,8 @@ void USceneCapturer::CaptureScene(int32 CurrentHorizontalStep, int32 CurrentVert
     }
     else
     {
-        FString TickString = FString::Printf(TEXT("_%05d_%04d_%04d"), 0, CurrentHorizontalStep, CurrentVerticalStep);
-        FString CaptureName = OutputDir / Timestamp / Folder / TickString + TEXT(".exr");
+        FString TickString = FString::Printf(TEXT("_%05d_%04d_%04d"), 0, CaptureIndex, 0);
+        FString CaptureName = OutputDir / Timestamp / TickString + TEXT(".exr");
 
         TSharedPtr<IImageWrapper> ImageWrapper = ImageWrapperModule.CreateImageWrapper(EImageFormat::EXR);
         ImageWrapper->SetRaw(SurfaceData.GetData(), SurfaceData.GetAllocatedSize(), TargetWidth, TargetHeight, ERGBFormat::RGBA, 32);
