@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "SceneCapturer.h"
 #include "Engine/TextureRenderTarget2D.h"
 #include "Engine/World.h"
@@ -25,66 +23,18 @@
 #include "CoreMinimal.h"
 #include "LatentActions.h"
 #include "Engine/LatentActionManager.h"
-#include "MessageLog/Public/MessageLogModule.h"//#include "MessageLogModule.h"
+#include "MessageLog/Public/MessageLogModule.h"
 #include "Tickable.h"
 
 #define LOCTEXT_NAMESPACE "LogStereoPanorama"
 
-#define CONCURRENT_CAPTURES 8
-#define GENERATE_DEBUG_IMAGES 0
+#define CONCURRENT_CAPTURES 6
 #define CAPTURE_FOV 120.0f  //30
+#define CAPTURE_WIDTH 720
+#define CAPTURE_HIGHT 720
 FOnSkyBoxCaptureDone USceneCapturer::m_OnSkyBoxCaptureDoneDelegate;
 
-// always combine both eyes
-const bool CombineAtlasesOnOutput = true;
 
-// Rotated Grid Supersampling
-const int32 maxNumSamples = 16;
-struct SamplingPattern
-{
-    int numSamples;
-    FVector2D ssOffsets[maxNumSamples];
-};
-const SamplingPattern g_ssPatterns[] =
-{
-    {
-        1,
-        {
-            FVector2D(0, 0),
-        }
-    },
-    {
-        4,
-        {
-            FVector2D(0.125f, 0.625f),
-            FVector2D(0.375f, 0.125f),
-            FVector2D(0.625f, 0.875f),
-            FVector2D(0.875f, 0.375f),
-        }
-    },
-    {
-        16,
-        {
-            FVector2D(0.125f, 0.125f),
-            FVector2D(0.125f, 0.375f),
-            FVector2D(0.125f, 0.625f),
-            FVector2D(0.125f, 0.875f),
-            FVector2D(0.375f, 0.125f),
-            FVector2D(0.375f, 0.375f),
-            FVector2D(0.375f, 0.625f),
-            FVector2D(0.375f, 0.875f),
-            FVector2D(0.625f, 0.125f),
-            FVector2D(0.625f, 0.375f),
-            FVector2D(0.625f, 0.625f),
-            FVector2D(0.625f, 0.875f),
-            FVector2D(0.875f, 0.125f),
-            FVector2D(0.875f, 0.375f),
-            FVector2D(0.875f, 0.625f),
-            FVector2D(0.875f, 0.875f),
-        }
-    },
-
-};
 
 void USceneCapturer::InitCaptureComponent(USceneCaptureComponent2D* CaptureComponent, float HFov, float VFov, EStereoscopicPass InStereoPass)
 {
@@ -99,7 +49,7 @@ void USceneCapturer::InitCaptureComponent(USceneCaptureComponent2D* CaptureCompo
 
 	const FName TargetName = MakeUniqueObjectName(this, UTextureRenderTarget2D::StaticClass(), TEXT("SceneCaptureTextureTarget"));
 	CaptureComponent->TextureTarget = NewObject<UTextureRenderTarget2D>(this, TargetName);
-	CaptureComponent->TextureTarget->InitCustomFormat(CaptureWidth, CaptureHeight, PF_FloatRGBA, false);
+	CaptureComponent->TextureTarget->InitCustomFormat(CAPTURE_WIDTH, CAPTURE_HIGHT, PF_FloatRGBA, false);
 	CaptureComponent->TextureTarget->ClearColor = FLinearColor::Red;
 	CaptureComponent->TextureTarget->TargetGamma = 2.2f;
 	CaptureComponent->RegisterComponentWithWorld( GetWorld() ); //GWorld
@@ -114,61 +64,30 @@ USceneCapturer::USceneCapturer(FVTableHelper& Helper)
     , bIsTicking(false)
     , CapturePlayerController(NULL)
     , CaptureGameMode(NULL)
-    , hAngIncrement(60.0f)  //2
-    , vAngIncrement(60.0f)  //15
-    , eyeSeparation(0.0f)
+    , hAngIncrement(90.0f)  //2
+    , vAngIncrement(90.0f)  //15
     , NumberOfHorizontalSteps((int32)(360.0f / hAngIncrement))
     , NumberOfVerticalSteps((int32)(180.0f / vAngIncrement) + 1) /* Need an extra b/c we only grab half of the top & bottom slices */
-    , SphericalAtlasWidth(1024) //6144
-    , SphericalAtlasHeight(SphericalAtlasWidth / 2)
-    , bForceAlpha(false)
-    , bEnableBilerp(true)
-    , SSMethod(FMath::Clamp<int32>(1, 0, UE_ARRAY_COUNT(g_ssPatterns)))
-    , bOverrideInitialYaw(false)
-    , ForcedInitialYaw(FRotator::ClampAxis(90.0f))
     , OutputDir(TEXT("I:/UE4Workspace/png/mycapture"))
-	, UseCameraRotation(0)
-    , dbgDisableOffsetRotation(false)
 	, OutputBitDepth(8)
 	, bOutputSceneDepth(true)
 	, bOutputFinalColor(true)
-	, bOutputWorldNormal(false)
-	, bOutputRoughness(false)
-	, bOutputMetallic(false)
-	, bOutputBaseColor(false)
-	, bOutputAmbientOcclusion(false)
-	, bMonoscopicMode(true)
-{}
+{
+}
 
 USceneCapturer::USceneCapturer()
     : ImageWrapperModule(FModuleManager::LoadModuleChecked<IImageWrapperModule>(FName("ImageWrapper")))
     , bIsTicking(false)
     , CapturePlayerController(NULL)
     , CaptureGameMode(NULL)
-    , hAngIncrement(60.0f)  //2
-    , vAngIncrement(60.0f)  //15
-    , eyeSeparation(0.0f)
+    , hAngIncrement(90.0f)  //2
+    , vAngIncrement(90.0f)  //15
     , NumberOfHorizontalSteps((int32)(360.0f / hAngIncrement))
     , NumberOfVerticalSteps((int32)(180.0f / vAngIncrement) + 1) /* Need an extra b/c we only grab half of the top & bottom slices */
-    , SphericalAtlasWidth(1024)  //6144
-    , SphericalAtlasHeight(SphericalAtlasWidth / 2)
-    , bForceAlpha(false)
-    , bEnableBilerp(true)
-    , SSMethod(FMath::Clamp<int32>(1, 0, UE_ARRAY_COUNT(g_ssPatterns)))
-    , bOverrideInitialYaw(false)
-    , ForcedInitialYaw(FRotator::ClampAxis(90.0f))
     , OutputDir(TEXT("I:/UE4Workspace/png/mycapture"))
-    , UseCameraRotation(0)
-    , dbgDisableOffsetRotation(false)
     , OutputBitDepth(8)
     , bOutputSceneDepth(true)
     , bOutputFinalColor(true)
-    , bOutputWorldNormal(false)
-    , bOutputRoughness(false)
-    , bOutputMetallic(false)
-    , bOutputBaseColor(false)
-    , bOutputAmbientOcclusion(false)
-    , bMonoscopicMode(true)
 {
 	// Add a message log category for this plugin
 	FMessageLogModule& MessageLogModule = FModuleManager::LoadModuleChecked<FMessageLogModule>("MessageLog");
@@ -197,29 +116,12 @@ USceneCapturer::USceneCapturer()
         const FVector2D capturePlaneDim = FVector2D(
             2.0f * FMath::Tan(FMath::DegreesToRadians(CAPTURE_FOV) / 2.0f),
             2.0f * FMath::Tan(FMath::DegreesToRadians(CAPTURE_FOV) / 2.0f));
-
-        CaptureHeight = CaptureWidth = 720; //配置是720
-
-        StripWidth  = CaptureWidth  * slicePlaneDim.X / capturePlaneDim.X; //有效部分占整个画面的占比
-        StripHeight = CaptureHeight * slicePlaneDim.Y / capturePlaneDim.Y;
-
-        //TODO: ikrimae: Come back and check for the actual right sampling rate
-        check(StripWidth  >=  (SphericalAtlasWidth / NumberOfHorizontalSteps) &&
-              StripHeight >= (SphericalAtlasHeight / NumberOfVerticalSteps));
-
-        //Ensure Width/Height is always even 成为偶数
-        StripWidth  += StripWidth & 1;
-        StripHeight += StripHeight & 1;
-
     }
-
-    UnprojectedAtlasWidth  = NumberOfHorizontalSteps * StripWidth;
-    UnprojectedAtlasHeight = NumberOfVerticalSteps   * StripHeight;
 
     //NOTE: ikrimae: Ensure that the main gameview is > CaptureWidth x CaptureHeight. Bug in UE4 that won't re-alloc scene render targets to the correct size
     //               when the scenecapture component > current window render target. https://answers.unrealengine.com/questions/80531/scene-capture-2d-max-resolution.html
     //TODO: ikrimae: Ensure that r.SceneRenderTargetResizeMethod=2
-    FSystemResolution::RequestResolutionChange(CaptureWidth, CaptureHeight, EWindowMode::Windowed);
+    FSystemResolution::RequestResolutionChange(CAPTURE_WIDTH, CAPTURE_HIGHT, EWindowMode::Windowed);
 
 	// Creating CaptureSceneComponent to use it as parent scene component.
 	// This scene component will hold same world location from camera.
@@ -256,38 +158,6 @@ USceneCapturer::USceneCapturer()
 	{
 		RenderPasses.Add(ERenderPass::SceneDepth);
 	}
-
-	if (bOutputWorldNormal)
-	{
-		RenderPasses.Add(ERenderPass::WorldNormal);
-	}
-
-	if (bOutputRoughness)
-	{
-		RenderPasses.Add(ERenderPass::Roughness);
-	}
-
-	if (bOutputMetallic)
-	{
-		RenderPasses.Add(ERenderPass::Metallic);
-	}
-
-	if (bOutputBaseColor)
-	{
-		RenderPasses.Add(ERenderPass::BaseColor);
-	}
-
-	if (bOutputAmbientOcclusion)
-	{
-		RenderPasses.Add(ERenderPass::AO);
-	}
-
-	// default behavior is to render finalcolor if no passes are specified
-	if (RenderPasses.Num() == 0)
-	{
-		RenderPasses.Add(ERenderPass::FinalColor);
-	}
-
 }
 
 // Output current render pass name as string
@@ -334,7 +204,6 @@ void USceneCapturer::Reset()
 		LeftEyeCaptureComponent->RemoveFromRoot();
 	}
 
-	UnprojectedLeftEyeAtlas.Empty();
 	CaptureSceneComponent->RemoveFromRoot();
 }
 
@@ -438,32 +307,8 @@ void USceneCapturer::SetPositionAndRotation( int32 CurrentHorizontalStep, int32 
 
     Rotation = Rotation.Clamp();
 
-	FVector Offset( 0.0f, eyeSeparation / 2.0f, 0.0f );
-    if (dbgDisableOffsetRotation)  //false
-    {
-        //For rendering near field objects, we don't rotate the capture components around the stereo pivot, but instead
-        //around each capture component
-        const auto rotAngleOffset = FRotator::ClampAxis(Rotation.Yaw - StartRotation.Yaw);
-        float eyeSeparationDampeningFactor = 1.0f;
-        if (rotAngleOffset <= 90.0f)
-        {
-            eyeSeparationDampeningFactor = FMath::Lerp(1.0f, 0.0f, rotAngleOffset / 90.0f);
-        }
-        else if (rotAngleOffset <= 270.0f)
-        {
-            eyeSeparationDampeningFactor = 0.0f;
-        }
-        else
-        {
-            eyeSeparationDampeningFactor = FMath::Lerp(0.0f, 1.0f, (rotAngleOffset - 270.0f) / 90.0f);
-        }
-
-        Offset = StartRotation.RotateVector(Offset * eyeSeparationDampeningFactor);
-    }
-    else
-    {
-        Offset = Rotation.RotateVector(Offset);
-    }
+	FVector Offset( 0.0f, 0.0f, 0.0f );
+    Offset = Rotation.RotateVector(Offset);
 
 	// Applying local offsets.
 	// Rotation will be used as local rotation to make it regardless of World Rotation.
@@ -472,100 +317,6 @@ void USceneCapturer::SetPositionAndRotation( int32 CurrentHorizontalStep, int32 
     LeftEyeCaptureComponents[CaptureIndex]->CaptureSceneDeferred(); //Render the scene to the texture the next time the main view is rendered
 }
 
-void USceneCapturer::ValidateParameters()
-{
-	ErrorFound = false;
-
-	FFormatNamedArguments Args;
-	Args.Add(TEXT("CaptureWidth"), CaptureWidth);
-	Args.Add(TEXT("CaptureHeight"), CaptureHeight);
-	Args.Add(TEXT("SphericalAtlasWidth"), SphericalAtlasWidth);
-	Args.Add(TEXT("SphericalAtlasHeight"), SphericalAtlasHeight);
-	Args.Add(TEXT("UnprojectedAtlasWidth"), UnprojectedAtlasWidth);
-	Args.Add(TEXT("UnprojectedAtlasHeight"), UnprojectedAtlasHeight);
-	Args.Add(TEXT("StripWidth"), StripWidth);
-	Args.Add(TEXT("StripHeight"), StripHeight);
-	Args.Add(TEXT("NumberOfHorizontalSteps"), NumberOfHorizontalSteps);
-	Args.Add(TEXT("NumberOfVerticalSteps"), NumberOfVerticalSteps);
-	Args.Add(TEXT("vAngIncrement"), vAngIncrement);
-	Args.Add(TEXT("hAngIncrement"), hAngIncrement);
-
-
-	// check if we output renders in an existing drive
-	int32 Index = OutputDir.Find(TEXT(":"), ESearchCase::CaseSensitive);
-	FString Drive = OutputDir.Left(Index + 1);
-	if (!Drive.IsEmpty() && FPaths::IsDrive(Drive))
-	{
-		if (!FPaths::DirectoryExists(Drive))
-		{
-			ErrorFound = true;
-			FMessageLog(StereoPanoramaLogName).Message(EMessageSeverity::Error, LOCTEXT("ValidationError_MissingOutputDirectory", "The output directory's drive doesn't exists. Plese set SP.OutputDir with a valid path. Skipping renders..."));
-		}
-	}
-
-	// Angular increment needs to be a factor of 360 to avoid seams i.e. 360 / angular increment needs to be a whole number
-	if ((int32)(NumberOfHorizontalSteps * hAngIncrement) != 360)
-	{
-		FMessageLog(StereoPanoramaLogName).Message(EMessageSeverity::Warning, FText::Format(LOCTEXT("ValidationWarning_InvalidHorizonalAngularStep", "Horizontal angular step {hAngIncrement} is not a factor of 360! This will lead to a seam between the start and end points"), Args));
-	}
-
-	if ((int32)((NumberOfVerticalSteps - 1) * vAngIncrement) != 180)
-	{
-		FMessageLog(StereoPanoramaLogName).Message(EMessageSeverity::Warning, FText::Format(LOCTEXT("ValidationWarning_InvalidVerticalAngularStep", "Vertical angular step {vAngIncrement} is not a factor of 180! This will lead to a seam between the start and end points"), Args));
-	}
-
-	TotalSteps = NumberOfHorizontalSteps * NumberOfVerticalSteps;
-	if ((SphericalAtlasWidth & 1) != 0)
-	{
-		FMessageLog(StereoPanoramaLogName).Message(EMessageSeverity::Warning, FText::Format(LOCTEXT("ValidationWarning_InvalidAtlasWidth", "The Atlas Width {SphericalAtlasWidth} must be even! Otherwise the Atlas height will not divide evenly."), Args));
-	}
-
-	// The strip width needs to be an even number and a factor of the number of steps
-	if ((StripWidth & 1) != 0)
-	{
-		FMessageLog(StereoPanoramaLogName).Message(EMessageSeverity::Warning, FText::Format(LOCTEXT("ValidationWarning_InvalidStripWidth", "Strip width {StripWidth} needs to be even to avoid bad offsets"), Args));
-	}
-
-	if ((StripHeight & 1) != 0)
-	{
-		FMessageLog(StereoPanoramaLogName).Message(EMessageSeverity::Warning, FText::Format(LOCTEXT("ValidationWarning_InvalidStripHeight", "Strip height {StripHeight} needs to be even to avoid bad offsets"), Args));
-	}
-
-	// Validate capturewidth & captureheight. Need to be even
-	if (CaptureWidth % 2 != 0)
-	{
-		FMessageLog(StereoPanoramaLogName).Message(EMessageSeverity::Warning, FText::Format(LOCTEXT("ValidationWarning_InvalidCaptureWidth", "The {CaptureWidth} needs to be an even number"), Args));
-	}
-
-	if (CaptureHeight % 2 != 0)
-	{
-		FMessageLog(StereoPanoramaLogName).Message(EMessageSeverity::Warning, FText::Format(LOCTEXT("ValidationWarning_InvalidCaptureHeight", "The {CaptureHeight} needs to be an even number"), Args));
-
-	}
-
-	// Unnecessary warning
-	//if (StripWidth * NumberOfHorizontalSteps != SphericalAtlasWidth)
-	//{
-		//FMessageLog(StereoPanoramaLogName).Message(EMessageSeverity::Warning, FText::Format(LOCTEXT("ValidationWarning_InvalidNumHorizonalSteps", "The number of horizontal steps {NumberOfHorizontalSteps} needs to be a factor of the atlas width {SphericalAtlasWidth}"), Args));
-	//}
-
-	// Unnecessary warning
-	//if (StripHeight * (NumberOfVerticalSteps - 1) != SphericalAtlasHeight)
-	//{
-		//FMessageLog(StereoPanoramaLogName).Message(EMessageSeverity::Warning, FText::Format(LOCTEXT("ValidationWarning_InvalidNumVerticalSteps", "The number of vertical steps {NumberOfVerticalSteps} needs to be a factor of the atlas height {SphericalAtlasHeight}"), Args));
-	//}
-
-	FMessageLog(StereoPanoramaLogName).Message(EMessageSeverity::Info, LOCTEXT("ValidationInfo_PanoramicScreenshotParams", "Panoramic screenshot parameters"));
-
-	FMessageLog(StereoPanoramaLogName).Message(EMessageSeverity::Info, LOCTEXT("ValidationInfo_MonoscopicMode", " ... In Monoscopic mode"));
-
-	FMessageLog(StereoPanoramaLogName).Message(EMessageSeverity::Info, FText::Format(LOCTEXT("ValidationInfo_CaptureSize", " ... capture size: {CaptureWidth} x {CaptureHeight}"), Args));
-	FMessageLog(StereoPanoramaLogName).Message(EMessageSeverity::Info, FText::Format(LOCTEXT("ValidationInfo_SphericalAtlasSize", " ... spherical atlas size: {SphericalAtlasWidth} x {SphericalAtlasHeight}"), Args));
-	FMessageLog(StereoPanoramaLogName).Message(EMessageSeverity::Info, FText::Format(LOCTEXT("ValidationInfo_IntermediateAtlasSize", " ... intermediate atlas size: {UnprojectedAtlasWidth} x {UnprojectedAtlasHeight}"), Args));
-	FMessageLog(StereoPanoramaLogName).Message(EMessageSeverity::Info, FText::Format(LOCTEXT("ValidationInfo_StripSize", " ... strip size: {StripWidth} x {StripHeight}"), Args));
-	FMessageLog(StereoPanoramaLogName).Message(EMessageSeverity::Info, FText::Format(LOCTEXT("ValidationInfo_NumHorizonalSteps", " ... horizontal steps: {NumberOfHorizontalSteps} at {hAngIncrement} degrees"), Args));
-	FMessageLog(StereoPanoramaLogName).Message(EMessageSeverity::Info, FText::Format(LOCTEXT("ValidationInfo_NumVerticalSteps", " ... vertical steps: {NumberOfVerticalSteps} at {vAngIncrement} degrees"), Args));
-}
 
 bool USceneCapturer::StartCapture(FVector CapturePosition, FString FileNamePrefix)
 {
@@ -591,24 +342,21 @@ void USceneCapturer::SetInitialState( int32 InStartFrame, int32 InEndFrame, FSte
 		return;
 	}
 
-	// Calculate the steps and validate they will produce good results
-	ValidateParameters();
+
+    //TotalSteps = NumberOfHorizontalSteps * NumberOfVerticalSteps;
+    TotalSteps = CONCURRENT_CAPTURES;
 
 	// Setup starting criteria
-    StartFrame				= InStartFrame;
-    EndFrame				= InEndFrame;
-	CurrentFrameCount		= 0;
     CurrentStep				= 0;
     CaptureStep				= ECaptureStep::Unpause;
 	CurrentRenderPassIndex	= 0;
 
-	Timestamp = FString::Printf( TEXT( "%s" ), *FDateTime::Now().ToString() );
+    FDateTime Time = FDateTime::Now();
+	Timestamp = FString::Printf( TEXT( "%s-%d" ), *Time.ToString(), Time.GetMillisecond());
+    UE_LOG(LogTemp, Warning, TEXT("！！！！！！！！！！Timestamp = %s"), *Timestamp);
 
 	//SetStartPosition();
 
-	// Create storage for atlas textures
-    check( UnprojectedAtlasWidth * UnprojectedAtlasHeight <= MAX_int32 );
-	UnprojectedLeftEyeAtlas.AddUninitialized(  UnprojectedAtlasWidth * UnprojectedAtlasHeight );
 
 	StartTime        = FDateTime::UtcNow();
 	OverallStartTime = StartTime;
@@ -624,233 +372,23 @@ void USceneCapturer::SetInitialState( int32 InStartFrame, int32 InEndFrame, FSte
 
 }
 
-void USceneCapturer::CopyToUnprojAtlas( int32 CurrentHorizontalStep, int32 CurrentVerticalStep, TArray<FLinearColor>& Atlas, TArray<FLinearColor>& SurfaceData )
-{
-	int32 XOffset = StripWidth * CurrentHorizontalStep;
-    int32 YOffset = StripHeight * CurrentVerticalStep;
 
-	int32 StripSize = StripWidth * sizeof(FLinearColor);
-    for (int32 Y = 0; Y < StripHeight; Y++)
-	{
-        void* Destination = &Atlas[( ( Y + YOffset ) * UnprojectedAtlasWidth ) + XOffset];
-		void* Source = &SurfaceData[StripWidth * Y];
-		FMemory::Memcpy( Destination, Source, StripSize );
-	}
-}
-
-TArray<FLinearColor> USceneCapturer::SaveAtlas(FString Folder, const TArray<FLinearColor>& SurfaceData)
-{
-	SCOPE_CYCLE_COUNTER(STAT_SPSavePNG);
-
-	TArray<FLinearColor> SphericalAtlas;  //最终返回的
-	SphericalAtlas.AddZeroed(SphericalAtlasWidth * SphericalAtlasHeight);
-
-	const FVector2D slicePlaneDim = FVector2D(
-		2.0f * FMath::Tan(FMath::DegreesToRadians(CAPTURE_FOV) / 2.0f),
-		2.0f * FMath::Tan(FMath::DegreesToRadians(CAPTURE_FOV) / 2.0f));
-
-	//For each direction,
-	//    Find corresponding slice
-	//    Calculate intersection of slice plane
-	//    Calculate intersection UVs by projecting onto plane tangents
-	//    Supersample that UV coordinate from the unprojected atlas
-	{
-		SCOPE_CYCLE_COUNTER(STAT_SPSampleSpherical);
-		// Dump out how long the process took
-		const FDateTime SamplingStartTime = FDateTime::UtcNow();
-		for (int32 y = 0; y < SphericalAtlasHeight; y++)
-		{
-			for (int32 x = 0; x < SphericalAtlasWidth; x++)
-			{
-				FLinearColor samplePixelAccum = FLinearColor(0, 0, 0, 0);
-
-				//TODO: ikrimae: Seems that bilinear filtering sans supersampling is good enough. Supersampling sans bilerp seems best.
-				//               After more tests, come back to optimize by folding supersampling in and remove this outer sampling loop.
-				const SamplingPattern& ssPattern = g_ssPatterns[SSMethod];
-
-				for (int32 SampleCount = 0; SampleCount < ssPattern.numSamples; SampleCount++)
-				{
-					const float sampleU = ((float)x + ssPattern.ssOffsets[SampleCount].X) / SphericalAtlasWidth;
-					const float sampleV = ((float)y + ssPattern.ssOffsets[SampleCount].Y) / SphericalAtlasHeight;
-
-					const float sampleTheta = sampleU * 360.0f;
-					const float samplePhi = sampleV * 180.0f;
-
-					const FVector sampleDir = FVector(
-						FMath::Sin(FMath::DegreesToRadians(samplePhi)) * FMath::Cos(FMath::DegreesToRadians(sampleTheta)),
-						FMath::Sin(FMath::DegreesToRadians(samplePhi)) * FMath::Sin(FMath::DegreesToRadians(sampleTheta)),
-						FMath::Cos(FMath::DegreesToRadians(samplePhi)));
-
-					const int32 sliceXIndex = FMath::TruncToInt(FRotator::ClampAxis(sampleTheta + hAngIncrement / 2.0f) / hAngIncrement);
-					int32 sliceYIndex = 0;
-
-					//Slice Selection = slice with max{sampleDir dot  sliceNormal }
-					{
-						float largestCosAngle = 0;
-						for (int VerticalStep = 0; VerticalStep < NumberOfVerticalSteps; VerticalStep++)
-						{
-							const FVector2D sliceCenterThetaPhi = FVector2D(
-								hAngIncrement * sliceXIndex,
-								vAngIncrement * VerticalStep);
-
-							//TODO: ikrimae: There has got to be a faster way. Rethink reparametrization later
-							const FVector sliceDir = FVector(
-								FMath::Sin(FMath::DegreesToRadians(sliceCenterThetaPhi.Y)) * FMath::Cos(FMath::DegreesToRadians(sliceCenterThetaPhi.X)),
-								FMath::Sin(FMath::DegreesToRadians(sliceCenterThetaPhi.Y)) * FMath::Sin(FMath::DegreesToRadians(sliceCenterThetaPhi.X)),
-								FMath::Cos(FMath::DegreesToRadians(sliceCenterThetaPhi.Y)));
-
-							const float cosAngle = sampleDir | sliceDir;
-
-							if (cosAngle > largestCosAngle)
-							{
-								largestCosAngle = cosAngle;
-								sliceYIndex = VerticalStep;
-							}
-						}
-					}
-
-
-					const FVector2D sliceCenterThetaPhi = FVector2D(
-						hAngIncrement * sliceXIndex,
-						vAngIncrement * sliceYIndex);
-
-					//TODO: ikrimae: Reparameterize with an inverse mapping (e.g. project from slice pixels onto final u,v coordinates.
-					//               Should make code simpler and faster b/c reduces to handful of sin/cos calcs per slice.
-					//               Supersampling will be more difficult though.
-
-					const FVector sliceDir = FVector(
-						FMath::Sin(FMath::DegreesToRadians(sliceCenterThetaPhi.Y)) * FMath::Cos(FMath::DegreesToRadians(sliceCenterThetaPhi.X)),
-						FMath::Sin(FMath::DegreesToRadians(sliceCenterThetaPhi.Y)) * FMath::Sin(FMath::DegreesToRadians(sliceCenterThetaPhi.X)),
-						FMath::Cos(FMath::DegreesToRadians(sliceCenterThetaPhi.Y)));
-
-					const FPlane slicePlane = FPlane(sliceDir, -sliceDir);
-
-					//Tangents from partial derivatives of sphere equation
-					const FVector slicePlanePhiTangent = FVector(
-						FMath::Cos(FMath::DegreesToRadians(sliceCenterThetaPhi.Y)) * FMath::Cos(FMath::DegreesToRadians(sliceCenterThetaPhi.X)),
-						FMath::Cos(FMath::DegreesToRadians(sliceCenterThetaPhi.Y)) * FMath::Sin(FMath::DegreesToRadians(sliceCenterThetaPhi.X)),
-						-FMath::Sin(FMath::DegreesToRadians(sliceCenterThetaPhi.Y))).GetSafeNormal();
-
-					//Should be reconstructed to get around discontinuity of theta tangent at nodal points
-					const FVector slicePlaneThetaTangent = (sliceDir ^ slicePlanePhiTangent).GetSafeNormal();
-					//const FVector slicePlaneThetaTangent = FVector(
-					//    -FMath::Sin(FMath::DegreesToRadians(sliceCenterThetaPhi.Y)) * FMath::Sin(FMath::DegreesToRadians(sliceCenterThetaPhi.X)),
-					//    FMath::Sin(FMath::DegreesToRadians(sliceCenterThetaPhi.Y)) * FMath::Cos(FMath::DegreesToRadians(sliceCenterThetaPhi.X)),
-					//    0).SafeNormal();
-
-					check(!slicePlaneThetaTangent.IsZero() && !slicePlanePhiTangent.IsZero());
-
-					const double t = (double)-slicePlane.W / (sampleDir | sliceDir);
-					const FVector sliceIntersection = FVector(t * sampleDir.X, t * sampleDir.Y, t * sampleDir.Z);
-
-					//Calculate scalar projection of sliceIntersection onto tangent vectors. a dot b / |b| = a dot b when tangent vectors are normalized
-					//Then reparameterize to U,V of the sliceplane based on slice plane dimensions
-					const float sliceU = (sliceIntersection | slicePlaneThetaTangent) / slicePlaneDim.X;
-					const float sliceV = (sliceIntersection | slicePlanePhiTangent) / slicePlaneDim.Y;
-
-					check(sliceU >= -(0.5f + KINDA_SMALL_NUMBER) &&
-						sliceU <= (0.5f + KINDA_SMALL_NUMBER));
-
-					check(sliceV >= -(0.5f + KINDA_SMALL_NUMBER) &&
-						sliceV <= (0.5f + KINDA_SMALL_NUMBER));
-
-					//TODO: ikrimae: Supersample/bilinear filter
-					const int32 slicePixelX = FMath::TruncToInt(sliceU * CaptureWidth);
-					const int32 slicePixelY = FMath::TruncToInt(sliceV * CaptureHeight);
-
-					FLinearColor slicePixelSample;
-
-					if (bEnableBilerp)
-					{
-						//TODO: ikrimae: Clean up later; too tired now
-						const int32 sliceCenterPixelX = (sliceXIndex + 0.5f) * StripWidth;
-						const int32 sliceCenterPixelY = (sliceYIndex + 0.5f) * StripHeight;
-
-						const FIntPoint atlasSampleTL(sliceCenterPixelX + FMath::Clamp(slicePixelX, -StripWidth / 2, StripWidth / 2), sliceCenterPixelY + FMath::Clamp(slicePixelY, -StripHeight / 2, StripHeight / 2));
-						const FIntPoint atlasSampleTR(sliceCenterPixelX + FMath::Clamp(slicePixelX + 1, -StripWidth / 2, StripWidth / 2), sliceCenterPixelY + FMath::Clamp(slicePixelY, -StripHeight / 2, StripHeight / 2));
-						const FIntPoint atlasSampleBL(sliceCenterPixelX + FMath::Clamp(slicePixelX, -StripWidth / 2, StripWidth / 2), sliceCenterPixelY + FMath::Clamp(slicePixelY + 1, -StripHeight / 2, StripHeight / 2));
-						const FIntPoint atlasSampleBR(sliceCenterPixelX + FMath::Clamp(slicePixelX + 1, -StripWidth / 2, StripWidth / 2), sliceCenterPixelY + FMath::Clamp(slicePixelY + 1, -StripHeight / 2, StripHeight / 2));
-
-						const FLinearColor pixelColorTL = SurfaceData[atlasSampleTL.Y * UnprojectedAtlasWidth + atlasSampleTL.X];
-						const FLinearColor pixelColorTR = SurfaceData[atlasSampleTR.Y * UnprojectedAtlasWidth + atlasSampleTR.X];
-						const FLinearColor pixelColorBL = SurfaceData[atlasSampleBL.Y * UnprojectedAtlasWidth + atlasSampleBL.X];
-						const FLinearColor pixelColorBR = SurfaceData[atlasSampleBR.Y * UnprojectedAtlasWidth + atlasSampleBR.X];
-
-						const float fracX = FMath::Frac(sliceU * CaptureWidth);
-						const float fracY = FMath::Frac(sliceV * CaptureHeight);
-
-						//Reinterpret as linear (a.k.a dont apply srgb inversion)
-						slicePixelSample = FMath::BiLerp(pixelColorTL, pixelColorTR, pixelColorBL, pixelColorBR, fracX, fracY);
-					}
-					else
-					{
-						const int32 sliceCenterPixelX = (sliceXIndex + 0.5f) * StripWidth;
-						const int32 sliceCenterPixelY = (sliceYIndex + 0.5f) * StripHeight;
-
-						const int32 atlasSampleX = sliceCenterPixelX + slicePixelX;
-						const int32 atlasSampleY = sliceCenterPixelY + slicePixelY;
-
-
-						slicePixelSample = SurfaceData[atlasSampleY * UnprojectedAtlasWidth + atlasSampleX];
-					}
-
-					// accum
-					samplePixelAccum += slicePixelSample;
-				}
-
-				SphericalAtlas[y * SphericalAtlasWidth + x] = samplePixelAccum / ssPattern.numSamples;
-
-				// Force alpha value
-				if (bForceAlpha)
-				{
-					SphericalAtlas[y * SphericalAtlasWidth + x].A = 1.0f;	// 255 in 8bit FColor
-				}
-			}
-		}
-
-		//Blit the first column into the last column to make the stereo image seamless at theta=360
-		for (int32 y = 0; y < SphericalAtlasHeight; y++)
-		{
-			SphericalAtlas[y * SphericalAtlasWidth + (SphericalAtlasWidth - 1)] = SphericalAtlas[y * SphericalAtlasWidth + 0];
-		}
-
-		const FTimespan SamplingDuration = FDateTime::UtcNow() - SamplingStartTime;
-	}
-
-	// DEBUG ONLY
-	if (GENERATE_DEBUG_IMAGES != 0)
-	{
-		TSharedPtr<IImageWrapper> ImageWrapper = ImageWrapperModule.CreateImageWrapper(EImageFormat::PNG);
-		FString FrameStringUnprojected = FString::Printf(TEXT("%s_%05d_Unprojected.png"), *Folder, CurrentFrameCount);
-		FString AtlasNameUnprojected = OutputDir / Timestamp / FrameStringUnprojected;
-		ImageWrapper->SetRaw(SurfaceData.GetData(), SurfaceData.GetAllocatedSize(), UnprojectedAtlasWidth, UnprojectedAtlasHeight, ERGBFormat::BGRA, 32);
-		const TArray64<uint8>& PNGDataUnprojected = ImageWrapper->GetCompressed(100);
-		FFileHelper::SaveArrayToFile(PNGDataUnprojected, *AtlasNameUnprojected);
-		ImageWrapper.Reset();
-	}
-
-	return SphericalAtlas;
-}
-
-
-void USceneCapturer::CaptureComponent(int32 CurrentHorizontalStep, int32 CurrentVerticalStep, FString Folder, USceneCaptureComponent2D* CaptureComponent, TArray<FLinearColor>& Atlas)
+void USceneCapturer::CaptureComponent(int32 CurrentHorizontalStep, int32 CurrentVerticalStep, FString Folder, USceneCaptureComponent2D* CaptureComponent)
 {
 	TArray<FLinearColor> SurfaceData;
+
+    uint32 targetWidth = 0;
+    uint32 targetHeight = 0;
 
 	{
 		SCOPE_CYCLE_COUNTER(STAT_SPReadStrip);
 
 		FTextureRenderTargetResource* RenderTarget = CaptureComponent->TextureTarget->GameThread_GetRenderTargetResource();
-		int32 CenterX = CaptureWidth / 2;
-		int32 CenterY = CaptureHeight / 2;
+        targetWidth = RenderTarget->GetSizeX();
+        targetHeight = RenderTarget->GetSizeY();
 
-		SurfaceData.AddUninitialized(StripWidth * StripHeight);
-
-		// Read pixels
-		FIntRect Area(CenterX - (StripWidth / 2), CenterY - (StripHeight / 2), CenterX + (StripWidth / 2), CenterY + (StripHeight / 2));
 		FReadSurfaceDataFlags readSurfaceDataFlags = FReadSurfaceDataFlags();
-
-		RenderTarget->ReadLinearColorPixelsPtr(SurfaceData.GetData(), readSurfaceDataFlags, Area);
+        RenderTarget->ReadLinearColorPixels(SurfaceData, readSurfaceDataFlags);
 	}
 
 	// SceneDepth pass only
@@ -867,12 +405,6 @@ void USceneCapturer::CaptureComponent(int32 CurrentHorizontalStep, int32 Current
 		}
 	}
 
-	// Copy off strip to atlas texture
-	CopyToUnprojAtlas(CurrentHorizontalStep, CurrentVerticalStep, Atlas, SurfaceData);
-
-    //SurfaceData.GetAllocatedSize() = StripWidth * StripHeight * 4(RGBA) * 4(float)
-    //UE_LOG(LogTemp, Warning, TEXT("！！！！！！！！！！CaptureComponent, %d, %d, %d"), SurfaceData.GetAllocatedSize(), StripWidth, StripHeight);
-
     if (OutputBitDepth == 8 && RenderPasses[CurrentRenderPassIndex] != ERenderPass::SceneDepth)
     {
         TArray<FColor> CombinedAtlas8bit;
@@ -882,90 +414,28 @@ void USceneCapturer::CaptureComponent(int32 CurrentHorizontalStep, int32 Current
             CombinedAtlas8bit.Add(t);
         }
 
-        FString TickString = FString::Printf(TEXT("_%05d_%04d_%04d"), CurrentFrameCount, CurrentHorizontalStep, CurrentVerticalStep);
+        FString TickString = FString::Printf(TEXT("_%05d_%04d_%04d"), 0, CurrentHorizontalStep, CurrentVerticalStep);
         FString CaptureName = OutputDir / Timestamp / Folder / TickString + TEXT(".png");
-
-        //SurfaceData.GetAllocatedSize() = StripWidth * StripHeight * 4(RGBA) * 4(float)
-        UE_LOG(LogTemp, Warning, TEXT("！！！！！！！！！！CaptureComponent, SurfaceData = %d, CombinedAtlas8bit = %d, StripWidth = %d, StripHeight = %d"),
-            SurfaceData.GetAllocatedSize() / sizeof(FLinearColor), CombinedAtlas8bit.GetAllocatedSize() / sizeof(FColor), StripWidth, StripHeight);
 
         // write
         TSharedPtr<IImageWrapper> ImageWrapper = ImageWrapperModule.CreateImageWrapper(EImageFormat::PNG);
-        ImageWrapper->SetRaw(CombinedAtlas8bit.GetData(), CombinedAtlas8bit.GetAllocatedSize(), StripWidth, StripHeight, ERGBFormat::BGRA, 8);
+        ImageWrapper->SetRaw(CombinedAtlas8bit.GetData(), CombinedAtlas8bit.GetAllocatedSize(), targetWidth, targetHeight, ERGBFormat::BGRA, 8);
         const TArray64<uint8>& ImageData = ImageWrapper->GetCompressed(100);
         FFileHelper::SaveArrayToFile(ImageData, *CaptureName);
         ImageWrapper.Reset();
     }
     else
     {
-        FString TickString = FString::Printf(TEXT("_%05d_%04d_%04d"), CurrentFrameCount, CurrentHorizontalStep, CurrentVerticalStep);
+        FString TickString = FString::Printf(TEXT("_%05d_%04d_%04d"), 0, CurrentHorizontalStep, CurrentVerticalStep);
         FString CaptureName = OutputDir / Timestamp / Folder / TickString + TEXT(".exr");
 
         // write
         TSharedPtr<IImageWrapper> ImageWrapper = ImageWrapperModule.CreateImageWrapper(EImageFormat::EXR);
-        ImageWrapper->SetRaw(SurfaceData.GetData(), SurfaceData.GetAllocatedSize(), StripWidth, StripHeight, ERGBFormat::RGBA, 32);
+        ImageWrapper->SetRaw(SurfaceData.GetData(), SurfaceData.GetAllocatedSize(), targetWidth, targetHeight, ERGBFormat::RGBA, 32);
         const TArray64<uint8>& ImageData = ImageWrapper->GetCompressed((int32)EImageCompressionQuality::Default);
         FFileHelper::SaveArrayToFile(ImageData, *CaptureName);
         ImageWrapper.Reset();
     }
-
-
-	// DEBUG ONLY
-	if (GENERATE_DEBUG_IMAGES != 0)
-	{
-		SCOPE_CYCLE_COUNTER(STAT_SPSavePNG);
-
-		// Generate name
-		FString TickString = FString::Printf(TEXT("_%05d_%04d_%04d"), CurrentFrameCount, CurrentHorizontalStep, CurrentVerticalStep);
-		FString CaptureName = OutputDir / Timestamp / Folder / TickString + TEXT(".png");
-
-		// Write out PNG
-		if (GENERATE_DEBUG_IMAGES == 2)
-		{
-			//Read Whole Capture Buffer
-			TSharedPtr<IImageWrapper> ImageWrapper = ImageWrapperModule.CreateImageWrapper(EImageFormat::PNG);
-
-			TArray<FLinearColor> SurfaceDataWhole;
-			SurfaceDataWhole.AddUninitialized(CaptureWidth * CaptureHeight);
-
-			// Read pixels
-			FTextureRenderTargetResource* RenderTarget = CaptureComponent->TextureTarget->GameThread_GetRenderTargetResource();
-			//RenderTarget->ReadPixelsPtr(SurfaceDataWhole, FReadSurfaceDataFlags());
-			RenderTarget->ReadLinearColorPixelsPtr(SurfaceData.GetData(), FReadSurfaceDataFlags());
-
-			// Force alpha value
-			if (bForceAlpha)
-			{
-				for (FLinearColor& Color : SurfaceDataWhole)
-				{
-					Color.A = 1.0f;
-				}
-			}
-
-			ImageWrapper->SetRaw(SurfaceDataWhole.GetData(), SurfaceDataWhole.GetAllocatedSize(), CaptureWidth, CaptureHeight, ERGBFormat::BGRA, 32);
-			const TArray64<uint8>& PNGData = ImageWrapper->GetCompressed(100);
-
-			FFileHelper::SaveArrayToFile(PNGData, *CaptureName);
-			ImageWrapper.Reset();
-		}
-		else
-		{
-			if (bForceAlpha)
-			{
-				for (FLinearColor& Color : SurfaceData)
-				{
-					Color.A = 1.0f;
-				}
-			}
-
-			TSharedPtr<IImageWrapper> ImageWrapper = ImageWrapperModule.CreateImageWrapper(EImageFormat::PNG);
-			ImageWrapper->SetRaw(SurfaceData.GetData(), SurfaceData.GetAllocatedSize(), StripWidth, StripHeight, ERGBFormat::BGRA, 32);
-			const TArray64<uint8>& PNGData = ImageWrapper->GetCompressed(100);
-
-			FFileHelper::SaveArrayToFile(PNGData, *CaptureName);
-			ImageWrapper.Reset();
-		}
-	}
 }
 
 
@@ -974,24 +444,12 @@ void USceneCapturer::CaptureComponent(int32 CurrentHorizontalStep, int32 Current
 //               Think through when we actually need to flush and document.
 void USceneCapturer::Tick( float DeltaTime )
 {
-	// skip rendering if error found
-	if (ErrorFound)
-	{
-		bIsTicking = false;
-	}
-
 	if( !bIsTicking )
 	{
 		return;
 	}
 
-    if ( CurrentFrameCount < StartFrame )
-    {
-        //Skip until we're at the frame we want to render
-        CurrentFrameCount++;
-        CaptureStep = ECaptureStep::Pause;
-    }
-	else if( CurrentStep < TotalSteps )
+    if( CurrentStep < TotalSteps )
 	{
         if (CaptureStep == ECaptureStep::Unpause)
         {
@@ -1030,16 +488,12 @@ void USceneCapturer::Tick( float DeltaTime )
             FRotator Rotation;
             CapturePlayerController->GetPlayerViewPoint(StartLocation, Rotation);
             // Gathering selected axis information from UseCameraRotation and saving it to FRotator Rotation.
-			Rotation = FRotator(
-				(UseCameraRotation & 1) ? Rotation.Pitch : 0.0f
-				, (UseCameraRotation & 2) ? Rotation.Yaw : 0.0f
-				, (UseCameraRotation & 4) ? Rotation.Roll : 0.0f
-			);
-            Rotation.Yaw = (bOverrideInitialYaw) ? ForcedInitialYaw : Rotation.Yaw;
+			Rotation = FRotator(0.0f , 0.0f, 0.0f);
             StartRotation = Rotation;
 
 			// Set Designated Rotation and Location for CaptureSceneComponent, using it as parent scene component for capturecomponents.
 			CaptureSceneComponent->SetWorldLocationAndRotation(StartLocation, Rotation);
+            UE_LOG(LogTemp, Warning, TEXT("！！！！！！！！！！SetStartPosition (%.1f，%.1f，%.1f)"), StartLocation.X, StartLocation.Y, StartLocation.Z);
 
 			// set capture components settings before capturing and reading
 			for (int32 CaptureIndex = 0; CaptureIndex < CONCURRENT_CAPTURES; CaptureIndex++)
@@ -1066,14 +520,24 @@ void USceneCapturer::Tick( float DeltaTime )
         else if (CaptureStep == ECaptureStep::SetPosition)
         {
             FlushRenderingCommands();
+     //       for (int32 CaptureIndex = 0; CaptureIndex < CONCURRENT_CAPTURES; CaptureIndex++)
+     //       {
+     //           int32 CurrentHorizontalStep;
+     //           int32 CurrentVerticalStep;
+     //           if (GetComponentSteps(CurrentStep + CaptureIndex, CurrentHorizontalStep, CurrentVerticalStep))
+     //           {
+					//SetPositionAndRotation(CurrentHorizontalStep, CurrentVerticalStep, CaptureIndex);
+     //           }
+     //       }
+            LeftEyeCaptureComponents[0]->SetRelativeLocationAndRotation(FVector(0.0f, 0.0f, 0.0f), FRotator(0.0f, 0.0f, 0.0f));  //前
+            LeftEyeCaptureComponents[1]->SetRelativeLocationAndRotation(FVector(0.0f, 0.0f, 0.0f), FRotator(0.0f, 90.0f, 0.0f));  //右
+            LeftEyeCaptureComponents[2]->SetRelativeLocationAndRotation(FVector(0.0f, 0.0f, 0.0f), FRotator(0.0f, 180.0f, 0.0f));  //后
+            LeftEyeCaptureComponents[3]->SetRelativeLocationAndRotation(FVector(0.0f, 0.0f, 0.0f), FRotator(0.0f, -90.0f, 0.0f));  //左
+            LeftEyeCaptureComponents[4]->SetRelativeLocationAndRotation(FVector(0.0f, 0.0f, 0.0f), FRotator(90.0f, 0.0f, 0.0f));  //上
+            LeftEyeCaptureComponents[5]->SetRelativeLocationAndRotation(FVector(0.0f, 0.0f, 0.0f), FRotator(-90.0f, 0.0f, 0.0f));  //下
             for (int32 CaptureIndex = 0; CaptureIndex < CONCURRENT_CAPTURES; CaptureIndex++)
             {
-                int32 CurrentHorizontalStep;
-                int32 CurrentVerticalStep;
-                if (GetComponentSteps(CurrentStep + CaptureIndex, CurrentHorizontalStep, CurrentVerticalStep))
-                {
-					SetPositionAndRotation(CurrentHorizontalStep, CurrentVerticalStep, CaptureIndex);
-                }
+                LeftEyeCaptureComponents[CaptureIndex]->CaptureSceneDeferred(); //Render the scene to the texture the next time the main view is rendered
             }
 
             CaptureStep = ECaptureStep::Read;
@@ -1082,16 +546,28 @@ void USceneCapturer::Tick( float DeltaTime )
 		else if (CaptureStep == ECaptureStep::Read)
 		{
             FlushRenderingCommands();
+    //        for (int32 CaptureIndex = 0; CaptureIndex < CONCURRENT_CAPTURES; CaptureIndex++)
+    //        {
+    //            int32 CurrentHorizontalStep;
+    //            int32 CurrentVerticalStep;
+				//if (GetComponentSteps(CurrentStep, CurrentHorizontalStep, CurrentVerticalStep))
+				//{
+				//	CaptureComponent(CurrentHorizontalStep, CurrentVerticalStep, TEXT("Left"), LeftEyeCaptureComponents[CaptureIndex]);
+				//	CurrentStep++;
+    //            }
+    //        }
             for (int32 CaptureIndex = 0; CaptureIndex < CONCURRENT_CAPTURES; CaptureIndex++)
             {
-                int32 CurrentHorizontalStep;
-                int32 CurrentVerticalStep;
-				if (GetComponentSteps(CurrentStep, CurrentHorizontalStep, CurrentVerticalStep))
-				{
-					CaptureComponent(CurrentHorizontalStep, CurrentVerticalStep, TEXT("Left"), LeftEyeCaptureComponents[CaptureIndex], UnprojectedLeftEyeAtlas);
-					CurrentStep++;
-                }
+                CaptureComponent(CaptureIndex, 0, TEXT("Left"), LeftEyeCaptureComponents[CaptureIndex]);
+                CurrentStep++;
             }
+            //必须这么搞一下，不然下次设置就无效了
+            LeftEyeCaptureComponents[0]->SetRelativeLocationAndRotation(FVector(0.01f, 0.0f, 0.0f), FRotator(0.01f, 0.0f, 0.0f));  //前
+            LeftEyeCaptureComponents[1]->SetRelativeLocationAndRotation(FVector(0.01f, 0.0f, 0.0f), FRotator(0.01f, 90.0f, 0.0f));  //右
+            LeftEyeCaptureComponents[2]->SetRelativeLocationAndRotation(FVector(0.01f, 0.0f, 0.0f), FRotator(0.01f, 180.0f, 0.0f));  //后
+            LeftEyeCaptureComponents[3]->SetRelativeLocationAndRotation(FVector(0.01f, 0.0f, 0.0f), FRotator(0.01f, -90.0f, 0.0f));  //左
+            LeftEyeCaptureComponents[4]->SetRelativeLocationAndRotation(FVector(0.01f, 0.0f, 0.0f), FRotator(90.01f, 0.0f, 0.0f));  //上
+            LeftEyeCaptureComponents[5]->SetRelativeLocationAndRotation(FVector(0.01f, 0.0f, 0.0f), FRotator(-90.01f, 0.0f, 0.0f));  //下
 
             CaptureStep = ECaptureStep::SetPosition;
             FlushRenderingCommands();
@@ -1103,71 +579,7 @@ void USceneCapturer::Tick( float DeltaTime )
 	}
 	else  // 也就是CurrentStep >= TotalSteps
 	{
-		TArray<FLinearColor> SphericalLeftEyeAtlas  = SaveAtlas(TEXT("Left"), UnprojectedLeftEyeAtlas);
-
-		if (CombineAtlasesOnOutput)  //true
-		{
-			TArray<FLinearColor> CombinedAtlas;
-			CombinedAtlas.Append(SphericalLeftEyeAtlas);
-			int32 EyeCount = 1;
-
-			// Get current render pass name
-			FString RenderPassString = GetCurrentRenderPassName();
-
-			// save to disk 真正的保存
-			if (OutputBitDepth == 8 && RenderPasses[CurrentRenderPassIndex] != ERenderPass::SceneDepth) //OutputBitDepth配置是8
-			{
-				// switch to 8 bit/channel
-				TArray<FColor> CombinedAtlas8bit;
-                int count = 0;
-				for (FLinearColor& Color : CombinedAtlas)
-				{
-					FColor t = Color.Quantize();
-					CombinedAtlas8bit.Add(t);
-                    ++count;
-                    if (count % 100000 == 0)
-                        UE_LOG(LogTemp, Warning, TEXT("！！！！！！！！！！FINAL PNG, CombinedAtlas8bit = %d, OP count = %d"),
-                            CombinedAtlas8bit.GetAllocatedSize() / sizeof(FColor), count);
-				}
-
-				// save as png 8bit/channel
-				FString FrameString = FString::Printf(TEXT("Frame_%05d_%s.png"), CurrentFrameCount, *RenderPassString);
-				FString AtlasName = OutputDir / Timestamp / RenderPassString / FrameString;
-				FString Msg = FString("Writing file: " + AtlasName);
-				FMessageLog(StereoPanoramaLogName).Message(EMessageSeverity::Info, FText::FromString(Msg));
-
-                //CombinedAtlas.GetAllocatedSize() = SphericalAtlasWidth * SphericalAtlasHeight * EyeCount * 4(BGRA) * 4(float)
-                UE_LOG(LogTemp, Warning, TEXT("！！！！！！！！！！FINAL PNG, CombinedAtlas = %d, CombinedAtlas8bit = %d, SphericalAtlasWidth = %d, SphericalAtlasHeight = %d, sizeof(FColor) = %d, OP count = %d"),
-                    CombinedAtlas.GetAllocatedSize(), CombinedAtlas8bit.GetAllocatedSize(), SphericalAtlasWidth, SphericalAtlasHeight, sizeof(FColor), count);
-
-				// write
-				TSharedPtr<IImageWrapper> ImageWrapper = ImageWrapperModule.CreateImageWrapper(EImageFormat::PNG);
-				ImageWrapper->SetRaw(CombinedAtlas8bit.GetData(), CombinedAtlas8bit.GetAllocatedSize(), SphericalAtlasWidth, SphericalAtlasHeight * EyeCount, ERGBFormat::BGRA, 8);
-				const TArray64<uint8>& ImageData = ImageWrapper->GetCompressed(100);
-				FFileHelper::SaveArrayToFile(ImageData, *AtlasName);
-				ImageWrapper.Reset();
-				FMessageLog(StereoPanoramaLogName).Message(EMessageSeverity::Info, LOCTEXT("Done", "Done!"));
-			}
-			else
-			{
-				// stay in 32bit/channel
-				FString FrameString = FString::Printf(TEXT("Frame_%05d_%s.exr"), CurrentFrameCount, *RenderPassString);
-				FString AtlasName = OutputDir / Timestamp / RenderPassString / FrameString;
-				FString Msg = FString("Writing file: " + AtlasName);
-				FMessageLog(StereoPanoramaLogName).Message(EMessageSeverity::Info, FText::FromString(Msg));
-
-				// write
-				TSharedPtr<IImageWrapper> ImageWrapper = ImageWrapperModule.CreateImageWrapper(EImageFormat::EXR);
-				ImageWrapper->SetRaw(CombinedAtlas.GetData(), CombinedAtlas.GetAllocatedSize(), SphericalAtlasWidth, SphericalAtlasHeight * EyeCount, ERGBFormat::RGBA, 32);
-				const TArray64<uint8>& ImageData = ImageWrapper->GetCompressed((int32)EImageCompressionQuality::Default);
-				FFileHelper::SaveArrayToFile(ImageData, *AtlasName);
-				ImageWrapper.Reset();
-				FMessageLog(StereoPanoramaLogName).Message(EMessageSeverity::Info, LOCTEXT("Done", "Done!"));
-			}
-
-		}
-
-		// ----------------------------------------------------------------------------------------
+        // ----------------------------------------------------------------------------------------
 		// Check if we need to do another render pass
 		CurrentRenderPassIndex++;
 		if (CurrentRenderPassIndex < RenderPasses.Num())
@@ -1175,8 +587,6 @@ void USceneCapturer::Tick( float DeltaTime )
 			// NEXT RENDER PASS - same frame
 			CurrentStep = 0;
 			CaptureStep = ECaptureStep::SetStartPosition;
-			UnprojectedLeftEyeAtlas.Empty();
-			UnprojectedLeftEyeAtlas.AddUninitialized(UnprojectedAtlasWidth * UnprojectedAtlasHeight);
 		}
 		else
 		{
@@ -1188,7 +598,7 @@ void USceneCapturer::Tick( float DeltaTime )
 
 			FFormatNamedArguments Args;
 			Args.Add(TEXT("Duration"), Duration.GetTotalSeconds());
-			Args.Add(TEXT("CurrentFrameCount"), CurrentFrameCount);
+			Args.Add(TEXT("CurrentFrameCount"), 0);
 			FMessageLog(StereoPanoramaLogName).Message(EMessageSeverity::Info, FText::Format(LOCTEXT("FrameDuration", "Duration: {Duration} seconds for frame {CurrentFrameCount}"), Args));
 
 			StartTime = EndTime;
@@ -1198,16 +608,8 @@ void USceneCapturer::Tick( float DeltaTime )
 			//StereoCaptureDoneDelegate.ExecuteIfBound(SphericalLeftEyeAtlas, SphericalRightEyeAtlas);
 
 			// Construct log of saved atlases in csv format
-			FrameDescriptors += FString::Printf(TEXT("%d, %g, %g" LINE_TERMINATOR), CurrentFrameCount, FApp::GetCurrentTime() - FApp::GetLastTime(), Duration.GetTotalSeconds());
+			FrameDescriptors += FString::Printf(TEXT("%d, %g, %g" LINE_TERMINATOR), 0, FApp::GetCurrentTime() - FApp::GetLastTime(), Duration.GetTotalSeconds());
 
-			CurrentFrameCount++;
-			if (CurrentFrameCount <= EndFrame)
-			{
-				CurrentStep = 0;
-				CaptureStep = ECaptureStep::Unpause;
-				CurrentRenderPassIndex = 0;
-			}
-			else
 			{
 				// ----------------------------------------------------------------------------------------
 				// EXIT
@@ -1216,12 +618,12 @@ void USceneCapturer::Tick( float DeltaTime )
 
 				FTimespan OverallDuration = FDateTime::UtcNow() - OverallStartTime;
 
-				FrameDescriptors += FString::Printf(TEXT("Duration: %g minutes for frame range [%d,%d] "), OverallDuration.GetTotalMinutes(), StartFrame, EndFrame);
+				FrameDescriptors += FString::Printf(TEXT("Duration: %g minutes for frame range [%d,%d] "), OverallDuration.GetTotalMinutes(), 0, 0);
 
 				FFormatNamedArguments ExitArgs;
 				ExitArgs.Add(TEXT("Duration"), OverallDuration.GetTotalMinutes());
-				ExitArgs.Add(TEXT("StartFrame"), StartFrame);
-				ExitArgs.Add(TEXT("EndFrame"), EndFrame);
+				ExitArgs.Add(TEXT("StartFrame"), 0);
+				ExitArgs.Add(TEXT("EndFrame"), 0);
 				FMessageLog(StereoPanoramaLogName).Message(EMessageSeverity::Info, FText::Format(LOCTEXT("CompleteDuration", "Duration: {Duration} minutes for frame range [{StartFrame},{EndFrame}] "), ExitArgs));
 
 				FString FrameDescriptorName = OutputDir / Timestamp / TEXT("Frames.txt");

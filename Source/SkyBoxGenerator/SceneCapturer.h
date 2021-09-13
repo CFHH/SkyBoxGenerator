@@ -100,11 +100,9 @@ public:
 
 	void InitCaptureComponent( USceneCaptureComponent2D* CaptureComponent, float HFov, float VFov, EStereoscopicPass InStereoPass );
 
-	void CaptureComponent(int32 CurrentHorizontalStep, int32 CurrentVerticalStep, FString Folder, USceneCaptureComponent2D* CaptureComponent, TArray<FLinearColor>& Atlas);
+	void CaptureComponent(int32 CurrentHorizontalStep, int32 CurrentVerticalStep, FString Folder, USceneCaptureComponent2D* CaptureComponent);
 
-	void CopyToUnprojAtlas(int32 CurrentHorizontalStep, int32 CurrentVerticalStep, TArray<FLinearColor>& Atlas, TArray<FLinearColor>& SurfaceData);
 
-	TArray<FLinearColor> SaveAtlas(FString Folder, const TArray<FLinearColor>& SurfaceData);
 
 	void SetPositionAndRotation( int32 CurrentHorizontalStep, int32 CurrentVerticalStep, int32 CaptureIndex );
 
@@ -117,8 +115,6 @@ public:
 	void EnablePostProcessVolumes();
 
 	void DisableUnsupportedPostProcesses(USceneCaptureComponent2D* CaptureComponent);
-
-	void ValidateParameters();
 
     bool StartCapture(FVector CapturePosition, FString FileNamePrefix);
 	void SetInitialState( int32 InStartFrame, int32 InEndFrame, FStereoCaptureDoneDelegate& InStereoCaptureDoneDelegate );
@@ -138,17 +134,8 @@ public:
 	FVector StartLocation;
 	FRotator StartRotation;
 	FString Timestamp;
-    int32 StartFrame;
-    int32 EndFrame;
 
 	ECaptureStep CaptureStep;
-	int32 CurrentFrameCount;
-
-	int32 CaptureWidth;
-	int32 CaptureHeight;
-
-	int32 StripWidth;
-    int32 StripHeight;
 
 	// store which passes to do per frame
 	TArray<ERenderPass> RenderPasses;
@@ -183,46 +170,21 @@ private:
 
     const float hAngIncrement;
     const float vAngIncrement;
-    float eyeSeparation;
 
     const int32 NumberOfHorizontalSteps;
     const int32 NumberOfVerticalSteps;
 
-    int32 UnprojectedAtlasWidth;
-    int32 UnprojectedAtlasHeight;
-
-    const int32 SphericalAtlasWidth;
-    const int32 SphericalAtlasHeight;
 
     int32 CurrentStep;
 	int32 TotalSteps;
 
-    TArray<FLinearColor> UnprojectedLeftEyeAtlas;
-
-    const bool bForceAlpha;
-    const bool bEnableBilerp;
-    const int32 SSMethod;
-    const bool bOverrideInitialYaw;
-    const float ForcedInitialYaw;
     const FString OutputDir;
-	bool ErrorFound;
-	// UseCameraRotation will be used for gathering selected rotational axis of user's camera.
-	const int32 UseCameraRotation;
 
-    bool dbgDisableOffsetRotation;
 	FString FrameDescriptors;
 
 	const int32 OutputBitDepth;
 	const bool bOutputSceneDepth;
 	const bool bOutputFinalColor;
-	const bool bOutputWorldNormal;
-	const bool bOutputRoughness;
-	const bool bOutputMetallic;
-	const bool bOutputBaseColor;
-	const bool bOutputAmbientOcclusion;
-
-	// output in mono (1 eye)
-	const bool bMonoscopicMode;
 
     FStereoCaptureDoneDelegate StereoCaptureDoneDelegate;
 
